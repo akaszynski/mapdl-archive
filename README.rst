@@ -1,7 +1,7 @@
 ====================
 MAPDL Archive Reader
 ====================
-|pypi| |PyPIact| |GH-CI| |codecov| |MIT| |black| |pre-commit|
+|pypi| |GH-CI| |MIT| |black|
 
 .. |pypi| image:: https://img.shields.io/pypi/v/mapdl-archive.svg?logo=python&logoColor=white
    :target: https://pypi.org/project/mapdl-archive/
@@ -164,14 +164,14 @@ Supported Elements
 At the moment, only solid elements are supported by the
 ``save_as_archive`` function, to include:
 
- - ``vtk.VTK_TETRA``
- - ``vtk.VTK_QUADRATIC_TETRA``
- - ``vtk.VTK_PYRAMID``
- - ``vtk.VTK_QUADRATIC_PYRAMID``
- - ``vtk.VTK_WEDGE``
- - ``vtk.VTK_QUADRATIC_WEDGE``
- - ``vtk.VTK_HEXAHEDRON``
- - ``vtk.VTK_QUADRATIC_HEXAHEDRON``
+- ``vtk.VTK_TETRA``
+- ``vtk.VTK_QUADRATIC_TETRA``
+- ``vtk.VTK_PYRAMID``
+- ``vtk.VTK_QUADRATIC_PYRAMID``
+- ``vtk.VTK_WEDGE``
+- ``vtk.VTK_QUADRATIC_WEDGE``
+- ``vtk.VTK_HEXAHEDRON``
+- ``vtk.VTK_QUADRATIC_HEXAHEDRON``
 
 Linear element types will be written as SOLID185, quadratic elements
 will be written as SOLID186, except for quadratic tetrahedrals, which

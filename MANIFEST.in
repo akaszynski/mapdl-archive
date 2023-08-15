@@ -1,1 +1,1 @@
-include ansys/mapdl/reader/cython/*.h
+include mapdl_archive/cython/*.h
