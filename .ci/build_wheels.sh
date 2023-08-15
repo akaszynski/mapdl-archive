@@ -27,6 +27,6 @@ esac
 cd io
 "${PYBIN}/pip" install build
 "${PYBIN}/python" -m build --wheel
-auditwheel repair dist/ansys_mapdl_reader*.whl
+auditwheel repair dist/mapdl_archive*.whl
 rm -f dist/*
 mv wheelhouse/*manylinux* dist/
