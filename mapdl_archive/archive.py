@@ -1,13 +1,11 @@
 """Module to read ANSYS ASCII block formatted CDB files."""
-from functools import wraps
 import io
 import logging
 import os
 import pathlib
 
 import numpy as np
-import pyvista as pv
-from pyvista import CellType
+from pyvista import CellType, UnstructuredGrid
 
 VTK_VOXEL = 11
 
@@ -225,12 +223,15 @@ class Archive(Mesh):
             )
         return self._grid
 
-    @wraps(pv.plot)
     def plot(self, *args, **kwargs):
-        """Plot the mesh."""
+        """Plot the mesh.
+
+        See ``help(pyvista.plot)`` for all optional kwargs.
+
+        """
         if self._grid is None:  # pragma: no cover
             raise AttributeError(
-                "Archive must be parsed as a vtk grid.\n" "Set `parse_vtk=True`"
+                "Archive must be parsed as a vtk grid.\n Set `parse_vtk=True`"
             )
         kwargs.setdefault("color", "w")
         kwargs.setdefault("show_edges", True)
@@ -351,7 +352,7 @@ def save_as_archive(
     if hasattr(grid, "cast_to_unstructured_grid"):
         grid = grid.cast_to_unstructured_grid()
 
-    if not isinstance(grid, pv.UnstructuredGrid):
+    if not isinstance(grid, UnstructuredGrid):
         raise TypeError(
             f"``grid`` argument must be an UnstructuredGrid, not {type(grid)}"
         )

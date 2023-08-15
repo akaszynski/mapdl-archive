@@ -1,6 +1,6 @@
-"""Module for common class between Archive, and result mesh."""
+"""Contains the Mesh class used by Archive."""
 import numpy as np
-import pyvista as pv
+from pyvista import UnstructuredGrid
 
 from mapdl_archive import _archive, _reader
 from mapdl_archive.elements import ETYPE_MAP
@@ -235,7 +235,7 @@ class Mesh:
             cells[cells < 0] = 0
             # cells[cells >= nodes.shape[0]] = 0  # fails when n_nodes < 20
 
-        grid = pv.UnstructuredGrid(cells, celltypes, nodes, deep=True)
+        grid = UnstructuredGrid(cells, celltypes, nodes, deep=True)
 
         # Store original ANSYS element and node information
         grid.point_data["ansys_node_num"] = nnum
