@@ -1,0 +1,142 @@
+name: Actions
+
+# repo specific gh actions
+env:
+  SHELLOPTS: 'errexit:pipefail'
+  PACKAGE_NAME: mapdl-archive
+  PYVISTA_OFF_SCREEN: true
+
+on:
+  pull_request:
+  push:
+    tags:
+      - "*"
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and Test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        python-version: ['3.8', '3.9', '3.10', '3.11']
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+          cache-dependency-path: 'requirements/*.txt'
+
+      - name: Build ManyLinux wheel
+        if: ${{ runner.os == 'Linux' }}
+        run: |
+          docker run \
+               --rm -v `pwd`:/io \
+               quay.io/pypa/manylinux2014_x86_64 \
+               /io/.ci/build_wheels.sh ${{ matrix.python-version }}
+
+      - name: Build wheel on Windows
+        if: ${{ runner.os == 'Windows' }}
+        run: |
+          pip install build
+          python -m build
+
+      - name: Validate wheel
+        run: |
+          pip install twine
+          twine check dist/*
+
+      - name: Install on Linux
+        if: ${{ runner.os == 'Linux' }}
+        run: |
+          pip install wheel
+          pip install dist/*.whl
+          pip list
+
+      - name: Install on Windows Powershell
+        if: ${{ runner.os == 'Windows' }}
+        run: |
+          pip install wheel
+          pip install (get-item .\dist\*.whl)
+          pip list
+
+      - name: Setup headless display
+        uses: pyvista/setup-headless-display-action@v2
+
+      - name: Install test requirements
+        run: pip install -r requirements/requirements_test.txt
+
+      - name: Test
+        run: pytest -v tests/ --durations=0
+
+      - name: Upload wheel
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ env.PACKAGE_NAME }}-${{ runner.os }}-${{ matrix.python-version }}
+          path: dist/
+          retention-days: 7
+
+  mac_build:
+    if: github.event_name == 'push' && contains(github.ref, 'refs/tags')
+    name: Build wheels on MacOS
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v2.14.1
+        with:
+            python-version: 3.8 - 3.11
+
+      - name: List generated wheels
+        run: |
+          ls ./wheelhouse/*
+
+      - uses: actions/upload-artifact@v3
+        with:
+          path: ./wheelhouse/*.whl
+
+  Release:
+    if: github.event_name == 'push' && contains(github.ref, 'refs/tags')
+    needs: [doc_build, build, mac_build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      # this downloads all artifacts
+      - uses: actions/download-artifact@v3
+
+      - name: Display structure of downloaded files
+        run: ls -R
+
+      - name: Upload to Public PyPi
+        run: |
+          pip install twine
+          twine upload --skip-existing ./**/*.whl
+          twine upload --skip-existing ./**/*.tar.gz
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          generate_release_notes: true
+          files: |
+            ./**/*.whl
+            ./**/*.zip
+            ./**/*.pdf
