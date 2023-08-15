@@ -44,6 +44,12 @@ setup(
     include_dirs=[np.get_include()],
     ext_modules=[
         Extension(
+            "mapdl_archive._relaxmidside",
+            ["mapdl_archive/cython/_relaxmidside.pyx"],
+            extra_compile_args=extra_compile_args,
+            language="c",
+        ),
+        Extension(
             "mapdl_archive._archive",
             [
                 "mapdl_archive/cython/_archive.pyx",

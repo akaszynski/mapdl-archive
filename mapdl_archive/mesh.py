@@ -2,7 +2,7 @@
 import numpy as np
 from pyvista import UnstructuredGrid
 
-from mapdl_archive import _archive, _reader
+from mapdl_archive import _reader, _relaxmidside
 from mapdl_archive.elements import ETYPE_MAP
 
 INVALID_ALLOWABLE_TYPES = TypeError(
@@ -751,7 +751,7 @@ def fix_missing_midside(cells, nodes, celltypes, offset, angles, nnum):
 
     # Set new midside nodes directly between their edge nodes
     temp_nodes = nodes_new.copy()
-    _archive.reset_midside(cells, celltypes, offset, temp_nodes)
+    _relaxmidside.reset_midside(cells, celltypes, offset, temp_nodes)
 
     # merge midside nodes
     unique_nodes, idx_a, idx_b = unique_rows(temp_nodes[nnodes:])
