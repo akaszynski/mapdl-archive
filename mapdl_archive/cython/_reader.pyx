@@ -9,11 +9,13 @@
 """ Cython implementation of a CDB reader """
 from libc.stdint cimport int64_t
 from libc.stdio cimport (
+    EOF,
     FILE,
     SEEK_CUR,
     SEEK_END,
     SEEK_SET,
     fclose,
+    fgetc,
     fgets,
     fopen,
     fread,
@@ -22,9 +24,10 @@ from libc.stdio cimport (
     ftell,
     printf,
     sscanf,
+    ungetc,
 )
 from libc.stdlib cimport atof, atoi, free, malloc
-from libc.string cimport strcmp, strncpy
+from libc.string cimport memcmp, strcmp, strncpy
 
 ctypedef unsigned char uint8_t
 
@@ -51,7 +54,8 @@ cdef extern from "reader.h":
     int read_nblock(char*, int*, double*, int, int*, int, int64_t*)
     int read_eblock(char*, int*, int*, int, int, int64_t*)
     int write_array_ascii(const char*, const double*, int);
-
+    int read_eblock_cfile(FILE *cfile, int *elem_off, int *elem, int nelem)
+    int read_nblock_cfile(FILE *cfile, int *nnum, double *nodes, int nnodes)
 
 cdef extern from 'vtk_support.h':
     int ans_to_vtk(const int, const int*, const int*, const int*, const int,
@@ -144,7 +148,7 @@ additional node numbers if there are more than eight.
     return elem_sz, elem, elem_off
 
 
-def read(filename, read_parameters=False, debug=False, read_eblock=True):
+def read_2(filename, read_parameters=False, debug=False, read_eblock=True):
     """Read blocked ansys archive file."""
     badstr = 'Badly formatted cdb file'
     filename_byte_string = filename.encode("UTF-8")
@@ -157,18 +161,6 @@ def read(filename, read_parameters=False, debug=False, read_eblock=True):
     if cfile == NULL:
         raise Exception("No such file or directory: '%s'" % filename)
 
-    # Load entire file to memory
-    fseek(cfile, 0, SEEK_END)
-    cdef int64_t fsize = ftell(cfile)
-    fseek(cfile, 0, SEEK_SET)
-    cdef char *raw = < char * >malloc(fsize*sizeof(char))
-    fread(raw, 1, fsize, cfile)
-    fclose(cfile)
-
-    # File counter
-    cdef int tmpval, start_pos
-    cdef int64_t n = 0
-
     # Define variables
     cdef size_t l = 0
     cdef ssize_t read
@@ -177,7 +169,7 @@ def read(filename, read_parameters=False, debug=False, read_eblock=True):
     cdef float tempflt
 
     # Size temp char array
-    cdef char line[1000]
+    cdef char line[500]
     cdef char tempstr[100]
 
     # Get element types
@@ -189,6 +181,12 @@ def read(filename, read_parameters=False, debug=False, read_eblock=True):
     cdef int nnodes = 0
     cdef int [::1] nnum = np.empty(0, ctypes.c_int)
     cdef double [:, ::1] nodes = np.empty((0, 0))
+
+    # EBLOCK
+    cdef int nelem = 0
+    cdef int [::1] elem = np.empty(0, dtype=ctypes.c_int)
+    cdef int [::1] elem_off = np.empty(0, dtype=ctypes.c_int)
+    cdef int elem_sz
 
     # CMBLOCK
     cdef int ncomp
@@ -202,18 +200,25 @@ def read(filename, read_parameters=False, debug=False, read_eblock=True):
     nodes_read = False
     eblock_read = False
 
+    # parameters
+    cdef char *end_marker = b"END PREAD"
+    cdef list parm_lines = []
+    cdef long position
+
     # keyopt
     keyopt = {}
 
+    cdef int first_char;
+
     while 1:
-        if myfgets(line, raw, &n, fsize):
+        first_char = fgetc(cfile)
+        if first_char == EOF:
             break
+        elif first_char == 'E' or first_char == 'e':
+            ungetc(first_char, cfile);  # Put the character back into the stream
+            fgets(line, sizeof(line), cfile)
 
-        # Record element types
-        if 'E' == line[0] or 'e' == line[0]:
-            if debug:
-                print('Hit "E"')
-
+            # Record element types
             if b'ET,' == line[:3] or b'et,' == line[:3]:
                 if debug:
                     print('reading ET')
@@ -240,12 +245,26 @@ def read(filename, read_parameters=False, debug=False, read_eblock=True):
 
                 # only read entries with SOLID
                 if b'SOLID' in line or b'solid' in line:
-                    elem_sz, elem, elem_off = py_read_eblock(raw, n, line, fsize)
+
+                    # Get size of EBLOCK from the last item in the line
+                    # Example: "EBLOCK,19,SOLID,,3588"
+                    nelem = int(line[line.rfind(b',') + 1:])
+                    if nelem == 0:
+                        raise RuntimeError('Unable to read element block')
+
+                    # Populate element field data and connectivity
+                    elem = np.empty(nelem*30, dtype=ctypes.c_int)
+                    elem_off = np.empty(nelem + 1, dtype=ctypes.c_int)
+                    elem_sz = read_eblock_cfile(cfile, &elem_off[0], &elem[0], nelem)
+
                     eblock_read = True
                     if debug:
                         print('finished')
 
-        elif b'K' == line[0] or b'k' == line[0]:
+        elif first_char == 'K' or first_char == 'k':
+            ungetc(first_char, cfile);  # Put the character back into the stream
+            fgets(line, sizeof(line), cfile)
+
             if debug:
                 print('Hit "K"')
 
@@ -266,14 +285,16 @@ def read(filename, read_parameters=False, debug=False, read_eblock=True):
                 else:
                     keyopt[key_num] = [entry[1:]]
 
-        elif 'R' == line[0] or 'r' == line[0]:
+        elif first_char == 'R' or first_char == 'r':
+            ungetc(first_char, cfile);  # Put the character back into the stream
+            fgets(line, sizeof(line), cfile)
+
             if debug:
                 print('Hit "R"')
 
             if b'RLBLOCK' in line or b'rlblock' in line:
                 if debug:
                     print('reading RLBLOCK')
-
 
                 # The RLBLOCK command defines a real constant
                 # set. The real constant sets follow each set,
@@ -306,14 +327,14 @@ def read(filename, read_parameters=False, debug=False, read_eblock=True):
                 nset, maxset, maxitems, nperline = set_dat
 
                 # Skip Format1 and Format2 (always 2i8,6g16.9 and 7g16.9)
-                if myfgets(line, raw, &n, fsize): raise Exception(badstr)
-                if myfgets(line, raw, &n, fsize): raise Exception(badstr)
+                if fgets(line, sizeof(line), cfile) == NULL: raise RuntimeError(badstr)
+                if fgets(line, sizeof(line), cfile) == NULL: raise RuntimeError(badstr)
 
                 # Read data
                 for _ in range(nset):
                     rcon = [] # real constants
 
-                    if myfgets(line, raw, &n, fsize): raise Exception(badstr)
+                    if fgets(line, sizeof(line), cfile) == NULL: raise RuntimeError(badstr)
 
                     # Get real constant number
                     rnum.append(int(line[:8]))
@@ -328,7 +349,8 @@ def read(filename, read_parameters=False, debug=False, read_eblock=True):
                             ncon -= 1
 
                         # advance line
-                        if myfgets(line, raw, &n, fsize): raise Exception(badstr)
+                        if fgets(line, sizeof(line), cfile) == NULL:
+                            raise RuntimeError(badstr)
 
                         # read next line
                         while True:
@@ -337,7 +359,8 @@ def read(filename, read_parameters=False, debug=False, read_eblock=True):
                                     rcon.append(float(line[16*i:16*(i + 1)]))
                                     ncon -= 1
                                 # advance
-                                if myfgets(line, raw, &n, fsize): raise Exception(badstr)
+                                if fgets(line, sizeof(line), cfile) == NULL:
+                                    raise RuntimeError(badstr)
 
                             else:
                                 for i in range(ncon):
@@ -356,7 +379,10 @@ def read(filename, read_parameters=False, debug=False, read_eblock=True):
 
                     rdat.append(rcon)
 
-        elif 'N' == line[0] or 'n' == line[0]:
+        elif first_char == 'N' or first_char == 'n':
+            ungetc(first_char, cfile);  # Put the character back into the stream
+            fgets(line, sizeof(line), cfile)
+
             if debug:
                 print('Hit "N"')
 
@@ -366,25 +392,16 @@ def read(filename, read_parameters=False, debug=False, read_eblock=True):
                     if debug:
                         print('Skipping additional NBLOCK')
                     continue
-                start_pos = n
                 if debug:
                     print('reading NBLOCK due to ', line.decode())
 
-                nodes_read = True
                 # Get size of NBLOCK
                 nnodes = int(line[line.rfind(b',') + 1:])
-                # this value may be wrong...
-
-                # Get format of NBLOCK
-                if myfgets(line, raw, &n, fsize):
-                    raise RuntimeError('Unable to read nblock format line or '
-                                       'at end of file.')
-                d_size, f_size, nfld, nexp = node_block_format(line)
                 nnum = np.empty(nnodes, dtype=ctypes.c_int)
                 nodes = np.empty((nnodes, 6))
 
-                nnodes_read = read_nblock(raw, &nnum[0], &nodes[0, 0], nnodes,
-                                          &d_size[0], f_size, &n)
+                nnodes_read = read_nblock_cfile(cfile, &nnum[0], &nodes[0, 0], nnodes)
+                nodes_read = True
 
                 if nnodes_read != nnodes:
                     nnodes = nnodes_read
@@ -394,7 +411,10 @@ def read(filename, read_parameters=False, debug=False, read_eblock=True):
                 if debug:
                     print('Read', nnodes_read, 'nodes')
 
-        elif 'C' == line[0] or 'c' == line[0]:
+        elif first_char == 'C' or first_char == 'c':
+            ungetc(first_char, cfile);  # Put the character back into the stream
+            fgets(line, sizeof(line), cfile)
+
             if debug:
                 print('Hit "C"')
 
@@ -418,7 +438,7 @@ def read(filename, read_parameters=False, debug=False, read_eblock=True):
                 component = np.empty(ncomp, ctypes.c_int)
 
                 # Get integer size
-                myfgets(line, raw, &n, fsize)
+                fgets(line, sizeof(line), cfile)
                 isz = int(line[line.find(b'i') + 1:line.find(b')')])
                 tempstr[isz] = '\0'
 
@@ -430,7 +450,7 @@ def read(filename, read_parameters=False, debug=False, read_eblock=True):
 
                     # Read new line if at the end of the line
                     if i%nblock == 0:
-                        myfgets(line, raw, &n, fsize)
+                        fgets(line, sizeof(line), cfile)
 
                     strncpy(tempstr, line + isz*(i%nblock), isz)
                     component[i] = atoi(tempstr)
@@ -443,7 +463,10 @@ def read(filename, read_parameters=False, debug=False, read_eblock=True):
                 elif b'ELEM' in line_comp_type:
                     elem_comps[comname] = component_interperter(component)
 
-        elif '*' == line[0] and read_parameters:  # maybe *DIM
+        elif read_parameters and first_char == '*':  # maybe *DIM
+            ungetc(first_char, cfile);  # Put the character back into the stream
+            fgets(line, sizeof(line), cfile)
+
             if debug:
                 print('Hit "*"')
 
@@ -454,70 +477,53 @@ def read(filename, read_parameters=False, debug=False, read_eblock=True):
 
                 name = items[1]
                 if items[2].lower() == 'string':
-                    myfgets(line, raw, &n, fsize)
+                    fgets(line, sizeof(line), cfile)
                     string_items = line.decode().split('=')
                     if len(string_items) > 1:
                         parameters[name] = string_items[1].replace("'", '').strip()
                     else:
                         parameters[name] = line.decode()
                 elif items[2].lower() == 'array':
-                    myfgets(line, raw, &n, fsize)
+                    fgets(line, sizeof(line), cfile)
                     if b'PREAD' in line:
                         if debug:
                             print('reading PREAD')
 
                         _, name, arr_size = line.decode().split(',')
                         name = name.strip()
-                        st = n
-                        en = raw.find(b'END PREAD', n)
-                        if debug:
-                            print(st, en)
-                        if st != -1 and en != -1:
-                            lines = raw[st:en].split()
-                            arr = np.genfromtxt(raw[st:en].split())
-                            parameters[name] = arr
+                        position = ftell(cfile)
 
-    # if the node block was not read for some reason
-    if not nodes_read:
-        # Free cached archive file
-        if debug:
-            print('Did not read nodes block. Rereading from start.')
+                        while True:
+                            if fgets(line, sizeof(line), cfile) is NULL:
+                                # EOF or error: Reset the file position
+                                if fseek(cfile, position, SEEK_SET) != 0:
+                                    # Error in fseek
+                                    raise IOError("Error setting file position")
+                                # EOF or error
+                                break
 
-        n = 0
-        while 1:
-            if myfgets(line, raw, &n, fsize):
-                break
+                            # Check for the end marker and end if reached it
+                            if memcmp(line, end_marker, sizeof(end_marker) - 1) == 0:
+                                break
 
-            if 'N' == line[0]: # Test is faster than next line
-                # if line contains the start of the node block
-                if b'NBLOCK' in line:
-                    # Get size of NBLOCK
-                    nnodes = int(line[line.rfind(b',') + 1:])
+                            parm_lines.append(line)
 
-                    # Get format of NBLOCK
-                    if myfgets(line, raw, &n, fsize): raise Exception(badstr)
-                    d_size, f_size, nfld, nexp = node_block_format(line)
-                    nnum = np.empty(nnodes, dtype=ctypes.c_int)
-                    nodes = np.empty((nnodes, 6))
+                        parameters[name] = np.genfromtxt((b''.join(parm_lines)).split())
 
-                    n = read_nblock(raw, &nnum[0], &nodes[0, 0], nnodes,
-                                    &d_size[0], f_size, &n)
+        else:
+            # no match, simply read remainder of line
+            fgets(line, sizeof(line), cfile)
 
-    # Free cached archive file
-    if debug:
-        print('Freeing memory')
-    free(raw)
-
-    # assemble global element block
-    if not eblock_read:
-        elem = np.empty(0, dtype=ctypes.c_int)
-        elem_off = np.empty(0, dtype=ctypes.c_int)
-        elem_sz = 0
+    # # if the node block was not read for some reason
+    # if not nodes_read:
+    #     if debug:
+    #         print('Did not read nodes block. Rereading from start.')
 
     if debug:
         print('Returning arrays')
 
-    return {'rnum': np.asarray(rnum),
+    return {
+        'rnum': np.asarray(rnum),
             'rdat': rdat,
             'ekey': np.asarray(elem_type, ctypes.c_int),
             'nnum': np.asarray(nnum),
@@ -529,6 +535,8 @@ def read(filename, read_parameters=False, debug=False, read_eblock=True):
             'keyopt': keyopt,
             'parameters': parameters
     }
+
+
 
 
 def node_block_format(string):

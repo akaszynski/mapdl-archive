@@ -117,7 +117,7 @@ class Archive(Mesh):
         self._read_parameters = read_parameters
         self._filename = pathlib.Path(filename)
         self._name = name
-        self._raw = _reader.read(
+        self._raw = _reader.read_2(
             self.filename,
             read_parameters=read_parameters,
             debug=verbose,
@@ -632,7 +632,7 @@ def save_as_archive(
                 arr = grid.cell_data[node_key]
                 if arr.dtype in [np.uint8, np.bool_]:
                     items = enum[arr.view(np.bool_)]
-                    write_cmblock(fid, items, node_key, "ELEMENT")
+                    write_cmblock(fid, items, node_key, "ELEM")
 
 
 def write_nblock(filename, node_id, pos, angles=None, mode="w"):
@@ -711,7 +711,7 @@ def write_cmblock(filename, items, comp_name, comp_type, digit_width=10, mode="w
     comp_name : str
         Name of the component
     comp_type : str
-        Component type to write.  Should be either 'ELEMENT' or 'NODE'.
+        Component type to write.  Should be either 'ELEM' or 'NODE'.
     digit_width : int, optional
         Default 10
     mode : str, optional
@@ -719,8 +719,9 @@ def write_cmblock(filename, items, comp_name, comp_type, digit_width=10, mode="w
     """
     comp_name = comp_name.upper()
     comp_type = comp_type.upper()
-    if comp_type.upper() not in ["ELEMENT", "NODE"]:
-        raise ValueError("`comp_type` must be either 'ELEMENT' or 'NODE'")
+    comp_type = "ELEM" if comp_type == "ELEMENT" else comp_type
+    if comp_type.upper() not in ["ELEM", "NODE"]:
+        raise ValueError("`comp_type` must be either 'ELEM' or 'NODE'")
 
     opened_file = False
     if isinstance(filename, io.TextIOBase):
@@ -754,8 +755,6 @@ def write_cmblock(filename, items, comp_name, comp_type, digit_width=10, mode="w
         print("".join([digit_formatter] * len(chunk)) % tuple(chunk), file=fid)
     else:
         np.savetxt(fid, cmblock_items.reshape(-1, 8), digit_formatter * 8)
-
-    print("", file=fid)
 
     if opened_file:
         fid.close()
