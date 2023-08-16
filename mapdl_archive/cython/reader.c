@@ -8,6 +8,11 @@
 
 // consider using fgets_unlocked when compiling with GNU
 
+#if defined(_WIN32) || defined(_WIN64)
+/* We are on Windows */
+# define strtok_r strtok_s
+#endif
+
 // #define DEBUG
 
   static const double DIV_OF_TEN[] = {
