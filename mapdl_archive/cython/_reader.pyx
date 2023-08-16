@@ -148,7 +148,7 @@ additional node numbers if there are more than eight.
     return elem_sz, elem, elem_off
 
 
-def read_2(filename, read_parameters=False, debug=False, read_eblock=True):
+def read(filename, read_parameters=False, debug=False, read_eblock=True):
     """Read blocked ansys archive file."""
     badstr = 'Badly formatted cdb file'
     filename_byte_string = filename.encode("UTF-8")

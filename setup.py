@@ -72,15 +72,6 @@ setup(
             extra_compile_args=extra_compile_args,
             language="c",
         ),
-        Extension(
-            "mapdl_archive._reader_interface",
-            [
-                "mapdl_archive/cython/_reader_interface.pyx",
-                "mapdl_archive/cython/reader.c",
-            ],
-            extra_compile_args=extra_compile_args,
-            language="c",
-        ),
     ],
     python_requires=">=3.8",
     keywords="vtk MAPDL ANSYS cdb",

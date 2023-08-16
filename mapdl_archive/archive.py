@@ -117,7 +117,7 @@ class Archive(Mesh):
         self._read_parameters = read_parameters
         self._filename = pathlib.Path(filename)
         self._name = name
-        self._raw = _reader.read_2(
+        self._raw = _reader.read(
             self.filename,
             read_parameters=read_parameters,
             debug=verbose,
