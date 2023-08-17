@@ -136,5 +136,3 @@ jobs:
           generate_release_notes: true
           files: |
             ./**/*.whl
-            ./**/*.zip
-            ./**/*.pdf
