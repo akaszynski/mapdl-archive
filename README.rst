@@ -61,7 +61,7 @@ object.
     grid.save('hex.vtk')
 
 
-.. figure:: https://github.com/akaszynski/mapdl-archive/blob/main/doc/source/images/hexbeam_small.png
+.. figure:: https://github.com/akaszynski/mapdl-archive/blob/main/doc/hexbeam_small.png
    :alt: Hexahedral beam
 
 You can then load this vtk file using `PyVista

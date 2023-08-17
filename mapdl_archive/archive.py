@@ -1,4 +1,4 @@
-"""Module to read ANSYS ASCII block formatted CDB files."""
+"""Module to read MAPDL ASCII block formatted CDB files."""
 import io
 import logging
 import os
@@ -17,7 +17,7 @@ log.setLevel("CRITICAL")
 
 
 class Archive(Mesh):
-    """Read a blocked ANSYS archive file or input file.
+    """Read a blocked MAPDL archive file or input file.
 
     Reads a blocked CDB file and optionally parses it to a vtk grid.
     This can be used to read in files written from MAPDL using the
@@ -66,9 +66,9 @@ class Archive(Mesh):
 
     Examples
     --------
-    >>> from ansys.mapdl import reader as pymapdl_reader
+    >>> import mapdl_archive
     >>> from mapdl_archive import examples
-    >>> hex_beam = pymapdl_reader.Archive(examples.hexarchivefile)
+    >>> hex_beam = mapdl_archive.Archive(examples.hexarchivefile)
     >>> print(hex_beam)
     ANSYS Archive File HexBeam.cdb
       Number of Nodes:              40
@@ -77,7 +77,7 @@ class Archive(Mesh):
       Number of Node Components:    2
       Number of Element Components: 2
 
-    Print the node array
+    Print the node array.
 
     >>> hex_beam.nodes
     array([[0.  , 0.  , 0.  ],
@@ -88,17 +88,17 @@ class Archive(Mesh):
            [0.75, 0.5 , 4.  ],
            [0.75, 0.5 , 4.5 ]])
 
-    Read an ANSYS workbench input file
+    Read an Ansys mechanical input file.
 
-    >>> my_archive = pymapdl_reader.Archive('C:\\Users\\user\\stuff.dat')
+    >>> my_archive = mapdl_archive.Archive("C:/Users/user/ds.dat")
 
     Notes
     -----
     This class only reads EBLOCK records with SOLID records.  For
     example, the record ``EBLOCK,19,SOLID,,3588`` will be read, but
-    ``EBLOCK,10,,,3588`` will not be read.  Generally, MAPDL will only
+    ``EBLOCK,10,,,3588`` will not be read. Generally, MAPDL will only
     write SOLID records and Mechanical Workbench may write SOLID
-    records.  These additional records will be ignored.
+    records. These additional records will be ignored.
     """
 
     def __init__(
@@ -113,7 +113,7 @@ class Archive(Mesh):
         name="",
         read_eblock=True,
     ):
-        """Initializes an instance of the archive class."""
+        """Initialize an instance of the archive class."""
         self._read_parameters = read_parameters
         self._filename = pathlib.Path(filename)
         self._name = name
@@ -145,38 +145,28 @@ class Archive(Mesh):
 
     @property
     def filename(self) -> str:
-        """String form of the filename. This property is read-only."""
+        """Return the filename."""
         return str(self._filename)
 
     @property
     def pathlib_filename(self) -> pathlib.Path:
-        """Return the ``pathlib.Path`` version of the filename. This property can not be set."""
+        """Return the filename as a ``pathlib.Path``."""
         return self._filename
 
     @property
-    def raw(self):  # pragma: no cover
-        raise AttributeError(
-            "The `raw` attribute has been depreciated.  Access"
-            " the values directly from the archive object.\n\n"
-            "    Instead of:\n"
-            '    archive.raw["nodes"]\n'
-            "    \n"
-            "    Use\n"
-            "    print(archive.nodes)"
-        )
-
-    @property
     def parameters(self):
-        """Parameters stored in the archive file
+        """Return the parameters stored in the archive file.
 
         Examples
         --------
-        >>> from ansys.mapdl import reader as pymapdl_reader
+        >>> import mapdl_archive
         >>> from mapdl_archive import examples
-        >>> archive = pymapdl_reader.Archive(examples.hexarchivefile,
-                                             read_parameters=True)
+        >>> archive = mapdl_archive.Archive(
+        ...     examples.hexarchivefile, read_parameters=True
+        ... )
         >>> archive.parameters
         {}
+
         """
         if not self._read_parameters:
             raise AttributeError(
@@ -186,17 +176,18 @@ class Archive(Mesh):
         return self._raw["parameters"]
 
     def __repr__(self):
+        """Return the representation of the archive."""
         if self._name:
-            txt = "MAPDL %s\n" % self._name
+            txt = f"MAPDL {self._name}\n"
         else:
             basename = os.path.basename(self._filename)
-            txt = "ANSYS Archive File %s\n" % basename
+            txt = f"ANSYS Archive File {basename}\n"
 
-        txt += "  Number of Nodes:              %d\n" % len(self.nnum)
-        txt += "  Number of Elements:           %d\n" % len(self.enum)
-        txt += "  Number of Element Types:      %d\n" % len(self.ekey)
-        txt += "  Number of Node Components:    %d\n" % len(self.node_components)
-        txt += "  Number of Element Components: %d\n" % len(self.element_components)
+        txt += f"  Number of Nodes:              {len(self.nnum)}\n"
+        txt += f"  Number of Elements:           {len(self.enum)}\n"
+        txt += f"  Number of Element Types:      {len(self.ekey)}\n"
+        txt += f"  Number of Node Components:    {len(self.node_components)}\n"
+        txt += f"  Number of Element Components: {len(self.element_components)}\n"
         return txt
 
     @property
@@ -205,9 +196,9 @@ class Archive(Mesh):
 
         Examples
         --------
-        >>> from ansys.mapdl import reader as pymapdl_reader
+        >>> import mapdl_archive
         >>> from mapdl_archive import examples
-        >>> archive = pymapdl_reader.Archive(examples.hexarchivefile)
+        >>> archive = mapdl_archive.Archive(examples.hexarchivefile)
         >>> archive.grid
         UnstructuredGrid (0x7ffa237f08a0)
           N Cells:      40
@@ -255,7 +246,7 @@ def save_as_archive(
     include_components=True,
     exclude_missing=False,
 ):
-    """Writes FEM as an ANSYS APDL archive file.
+    """Write FEM as an ANSYS APDL archive file.
 
     This function supports the following element types:
 
@@ -343,10 +334,10 @@ def save_as_archive(
     --------
     Write a ``pyvista.UnstructuredGrid`` to ``"archive.cdb"``.
 
-    >>> from ansys.mapdl import reader as pymapdl_reader
+    >>> import mapdl_archive
     >>> from pyvista import examples
     >>> grid = examples.load_hexbeam()
-    >>> pymapdl_reader.save_as_archive('archive.cdb', grid)
+    >>> pymapdl_reader.save_as_archive("archive.cdb", grid)
 
     """
     if hasattr(grid, "cast_to_unstructured_grid"):
@@ -636,24 +627,31 @@ def save_as_archive(
 
 
 def write_nblock(filename, node_id, pos, angles=None, mode="w"):
-    """Writes nodes and node angles to file.
+    """Write nodes and node angles to file.
 
     Parameters
     ----------
     filename : str or file handle
         Filename to write node block to.
-
-    node_id : np.ndarray
+    node_id : numpy.ndarray
         ANSYS node numbers.
-
     pos : np.ndarray
-        Node coordinates.
-
-    angles : np.ndarray, optional
+        Array of node coordinates.
+    angles : numpy.ndarray, optional
         Writes the node angles for each node when included.
+    mode : str, default: "w"
+        Write mode.
 
-    mode : str, optional
-        Write mode.  Default ``'w'``.
+    Examples
+    --------
+    Write random points as nodes for MAPDL.
+
+    >>> import numpy as np
+    >>> import mapdl_archive
+    >>> points = np.random.random((100, 3))
+    >>> point_ids = np.arange(1, 101)
+    >>> mapdl_archive.write_nblock("nblock.inp", point_ids, points)
+
     """
     assert pos.ndim == 2 and pos.shape[1] == 3, "Invalid position array"
     if angles is not None:
@@ -700,22 +698,35 @@ def write_nblock(filename, node_id, pos, angles=None, mode="w"):
 
 
 def write_cmblock(filename, items, comp_name, comp_type, digit_width=10, mode="w"):
-    """Writes a component block (CMBLOCK) to a file.
+    """Write a component block (CMBLOCK) to a file.
 
     Parameters
     ----------
     filename : str or file handle
         File to write CMBLOCK component to.
-    items : list or np.ndarray
+    items : sequence
         Element or node numbers to write.
     comp_name : str
-        Name of the component
+        Name of the component.
     comp_type : str
-        Component type to write.  Should be either 'ELEM' or 'NODE'.
-    digit_width : int, optional
-        Default 10
-    mode : str, optional
-        Write mode.  Default ``'w'``.
+        Component type to write.  Should be either ``'ELEM'`` or ``'NODE'``.
+    digit_width : int, default: 10
+        Digit width.
+    mode : str, default: "w"
+        Write mode.
+
+    Examples
+    --------
+    Write a node component to disk.
+
+    >>> import write_cmblock
+    >>> items = [1, 20, 50, 51, 52, 53]
+    >>> mapdl_archive.write_cmblock("cmblock_elem.inp", items, "MY_NODE_COMP", "NODE")
+
+    Write an element component to disk.
+
+    >>> mapdl_archive.write_cmblock("cmblock_elem.inp", items, "MY_NODE_COMP", "ELEM")
+
     """
     comp_name = comp_name.upper()
     comp_type = comp_type.upper()
@@ -774,7 +785,7 @@ def _write_eblock(
     nodenum,
     mode="a",
 ):
-    """Write EBLOCK to disk"""
+    """Write EBLOCK to disk."""
     # perform type checking here
     elem_id = elem_id.astype(np.int32, copy=False)
     etype = etype.astype(np.int32, copy=False)
