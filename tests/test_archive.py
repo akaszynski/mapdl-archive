@@ -321,7 +321,6 @@ def test_read_complex_archive(all_solid_cells_archive):
             [3.8594834323787e00, 1.4225065965966e00, -9.3308978018331e-01],
         ]
     )
-
     assert np.allclose(nblock_expected, all_solid_cells_archive.nodes)
 
     grid = all_solid_cells_archive.grid

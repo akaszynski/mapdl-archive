@@ -121,14 +121,17 @@ def read(filename, read_parameters=False, debug=False, read_eblock=True):
     # keyopt
     keyopt = {}
 
-    cdef int first_char;
+    cdef int first_char, next_char;
 
     while 1:
         first_char = fgetc(cfile)
         if first_char == EOF:
             break
+        elif first_char == '\r' or first_char == '\n':
+            ungetc(first_char, cfile)
+            fgets(line, sizeof(line), cfile)
         elif first_char == 'E' or first_char == 'e':
-            ungetc(first_char, cfile);  # Put the character back into the stream
+            ungetc(first_char, cfile)
             fgets(line, sizeof(line), cfile)
 
             # Record element types
@@ -432,6 +435,7 @@ def read(filename, read_parameters=False, debug=False, read_eblock=True):
 
         else:
             # no match, simply read remainder of line
+
             fgets(line, sizeof(line), cfile)
 
     # # if the node block was not read for some reason
