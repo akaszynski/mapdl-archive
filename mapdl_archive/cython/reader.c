@@ -44,7 +44,7 @@
   };
 
 
-__inline double power_of_ten(int exponent) {
+static inline double power_of_ten(int exponent) {
     double result = 1.0;
     double base = (exponent < 0) ? 0.1 : 10.0;
     int abs_exponent = abs(exponent);
@@ -57,7 +57,7 @@ __inline double power_of_ten(int exponent) {
 //=============================================================================
 // Fast string to integer convert to ANSYS formatted integers
 //=============================================================================
-__inline int fast_atoi(const char *raw, const int intsz) {
+static inline int fast_atoi(const char *raw, const int intsz) {
     int val = 0;
     int c;
     char current_char;
@@ -77,7 +77,7 @@ __inline int fast_atoi(const char *raw, const int intsz) {
 //=============================================================================
 // Checks for negative character
 //=============================================================================
-__inline int checkneg(char *raw, int intsz) {
+static inline int checkneg(char *raw, int intsz) {
   int c;
   for (c = 0; c < intsz; ++c) {
     if (raw[0] == '-') {
@@ -94,7 +94,7 @@ __inline int checkneg(char *raw, int intsz) {
 // "        -6.01203 "
 //
 // fltsz : Number of characters to read in a floating point number
-__inline int ans_strtod(char *raw, int fltsz, double *arr) {
+static inline int ans_strtod(char *raw, int fltsz, double *arr) {
   char *end = raw + fltsz;
   double sign = 1;
 
