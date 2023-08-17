@@ -51,101 +51,13 @@ def safe_int(value):
 
 cdef extern from "reader.h":
     int read_nblock_from_nwrite(char*, int*, double*, int)
-    int read_nblock(char*, int*, double*, int, int*, int, int64_t*)
-    int read_eblock(char*, int*, int*, int, int, int64_t*)
     int write_array_ascii(const char*, const double*, int);
     int read_eblock_cfile(FILE *cfile, int *elem_off, int *elem, int nelem)
-    int read_nblock_cfile(FILE *cfile, int *nnum, double *nodes, int nnodes)
+    int read_nblock_cfile(FILE *cfile, int *nnum, double *nodes, int nnodes, int* d_size, int f_size)
 
 cdef extern from 'vtk_support.h':
     int ans_to_vtk(const int, const int*, const int*, const int*, const int,
     const int*, int64_t*, int64_t*, uint8_t*, const int)
-
-
-cdef int myfgets(char *outstr, char *instr, int64_t *n, int64_t fsize):
-    """Copies a single line from instr to outstr starting from position n """
-
-    cdef int k = n[0]
-
-    # Search line at a maximum of 10000 characters
-    cdef int64_t i, c
-    c = n[0]
-    for i in range(1000):
-        # check if end of file
-        if c > fsize:
-            return 1
-
-        # Add null character if at end of line
-        if instr[c] == '\r':
-            n[0] += i + 2
-            outstr[i] = '\0'
-            return 0
-        elif instr[c] == '\n':
-            n[0] += i + 1
-            outstr[i] = '\0'
-            return 0
-
-        # Otherwise, store data to output string
-        outstr[i] = instr[c]
-        c += 1
-
-    # Line exceeds 1000 char (unlikely with ANSYS CDB formatting)
-    return 1
-
-
-def py_read_eblock(char *raw, int64_t n, char *line, int64_t fsize):
-    """Read the eblock
-
-    The format of the element "block" is as follows for the SOLID format:
-    - Field 1 - The material number.
-    - Field 2 - The element type number.
-    - Field 3 - The real constant number.
-    - Field 4 - The section ID attribute (beam section) number.
-    - Field 5 - The element coordinate system number.
-    - Field 6 - The birth/death flag.
-    - Field 7 - The solid model reference number.
-    - Field 8 - The element shape flag.
-    - Field 9 - The number of nodes defining this element if Solkey =
-      SOLID; otherwise, Field 9 = 0.
-    - Field 10 - Not used.
-    - Field 11 - The element number.
-    - Fields 12-19 - The node numbers. The next line will have the
-additional node numbers if there are more than eight.
-
-    From the ANSYS programmer's manual
-    The format without the SOLID keyword is:
-    - Field 1 - The element number.
-    - Field 2 - The type of section ID.
-    - Field 3 - The real constant number.
-    - Field 4 - The material number.
-    - Field 5 - The element coordinate system number.
-    - Fields 6-15 - The node numbers. The next line will have the
-      additional node numbers if there are more
-    than ten.
-
-    """
-
-    # Get size of EBLOCK from the last item in the line
-    # Example: "EBLOCK,19,SOLID,,3588"
-    cdef int nelem = int(line[line.rfind(b',') + 1:])
-    if nelem == 0:
-        raise RuntimeError('Unable to read element block')
-
-    # Get integer block size
-    myfgets(line, raw, &n, fsize)
-    # (19i9)
-    cdef int isz = int(line[line.find(b'i') + 1:line.find(b')')])
-
-    # Populate element field data and connectivity
-    cdef int [::1] elem = np.empty(nelem*30, dtype=ctypes.c_int)
-    cdef int [::1] elem_off = np.empty(nelem + 1, dtype=ctypes.c_int)
-    cdef int elem_sz = read_eblock(raw,
-                                   &elem_off[0],
-                                   &elem[0],
-                                   nelem,
-                                   isz,
-                                   &n)
-    return elem_sz, elem, elem_off
 
 
 def read(filename, read_parameters=False, debug=False, read_eblock=True):
@@ -181,6 +93,8 @@ def read(filename, read_parameters=False, debug=False, read_eblock=True):
     cdef int nnodes = 0
     cdef int [::1] nnum = np.empty(0, ctypes.c_int)
     cdef double [:, ::1] nodes = np.empty((0, 0))
+    cdef int d_size[3]
+    cdef int f_size, nfields
 
     # EBLOCK
     cdef int nelem = 0
@@ -191,7 +105,6 @@ def read(filename, read_parameters=False, debug=False, read_eblock=True):
     # CMBLOCK
     cdef int ncomp
     cdef int [::1] component
-    cdef int [::1] d_size
     cdef int nblock
 
     node_comps = {}
@@ -400,7 +313,14 @@ def read(filename, read_parameters=False, debug=False, read_eblock=True):
                 nnum = np.empty(nnodes, dtype=ctypes.c_int)
                 nodes = np.empty((nnodes, 6))
 
-                nnodes_read = read_nblock_cfile(cfile, &nnum[0], &nodes[0, 0], nnodes)
+                # Get format of nblock
+                fgets(line, sizeof(line), cfile)
+                d_size_py, f_size, _, _ = node_block_format(line)
+                d_size[0] = d_size_py[0]
+                d_size[1] = d_size_py[1]
+                d_size[2] = d_size_py[2]
+
+                nnodes_read = read_nblock_cfile(cfile, &nnum[0], &nodes[0, 0], nnodes, d_size, f_size)
                 nodes_read = True
 
                 if nnodes_read != nnodes:
@@ -535,8 +455,6 @@ def read(filename, read_parameters=False, debug=False, read_eblock=True):
             'keyopt': keyopt,
             'parameters': parameters
     }
-
-
 
 
 def node_block_format(string):

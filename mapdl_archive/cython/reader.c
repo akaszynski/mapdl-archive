@@ -655,88 +655,10 @@ int write_array_ascii(const char *filename, const double *arr,
 }
 
 
-
-typedef struct {
-    int d_size[3];
-    int f_size;
-    int nfields;
-    int nexp;
-} NodeBlockFormat;
-
-
-NodeBlockFormat node_block_format(const char *input) {
-    NodeBlockFormat result = {{0, 0, 0}, 0, 0, 0};
-
-    char *string = strdup(input);
-    if (string == NULL) {
-        perror("Memory allocation failed");
-        exit(EXIT_FAILURE);
-    }
-
-    char *token;
-    char *rest = string;
-    int c = 0;
-    int n;
-
-    // Remove parentheses
-    string[strlen(string) - 1] = '\0';
-    rest++;
-
-    while ((token = strtok_r(rest, ",", &rest))) {
-        if (strchr(token, 'i') != NULL) {
-            char *items[2];
-            int i = 0;
-            char *item = strtok(token, "i");
-            while (item != NULL) {
-                items[i] = item;
-                item = strtok(NULL, "i");
-                i++;
-            }
-            for (n = 0; n < atoi(items[0]); n++) {
-                result.d_size[c] = atoi(items[1]);
-                c++;
-            }
-        } else if (strchr(token, 'e') != NULL) {
-            char *parts[2];
-            int i = 0;
-            char *part = strtok(token, "e");
-            while (part != NULL) {
-                parts[i] = part;
-                part = strtok(NULL, "e");
-                i++;
-            }
-            result.f_size = atoi(parts[1]);
-            result.nfields = atoi(parts[0]);
-
-            if (strchr(parts[1], '.') != NULL) {
-                char *exp_parts[2];
-                i = 0;
-                part = strtok(parts[1], ".");
-                while (part != NULL) {
-                    exp_parts[i] = part;
-                    part = strtok(NULL, ".");
-                    i++;
-                }
-                if (strchr(exp_parts[1], 'e') != NULL) {
-                    result.nexp = atoi(strchr(exp_parts[1], 'e') + 1);
-                }
-            }
-        }
-    }
-
-    free(string);
-    return result;
-}
-
-int read_nblock_cfile(FILE *cfile, int *nnum, double *nodes, int nnodes) {
+int read_nblock_cfile(FILE *cfile, int *nnum, double *nodes, int nnodes, int* d_size, int f_size) {
 
   int i, j, i_val, eol;
   char line[256];
-
-    if (fgets(line, sizeof(line), cfile) == NULL) {
-      return 0;
-    }
-    NodeBlockFormat nblock_fmt = node_block_format(line);
 
   for (i = 0; i < nnodes; i++) {
     // Read a line from the file
@@ -752,20 +674,20 @@ int read_nblock_cfile(FILE *cfile, int *nnum, double *nodes, int nnodes) {
 
     char *cursor = line;
 
-    i_val = fast_atoi(cursor, nblock_fmt.d_size[0]);
+    i_val = fast_atoi(cursor, d_size[0]);
     /* printf("%8d    \n", i_val); */
     nnum[i] = i_val;
 
-    cursor += nblock_fmt.d_size[0];
-    cursor += nblock_fmt.d_size[1];
-    cursor += nblock_fmt.d_size[2];
+    cursor += d_size[0];
+    cursor += d_size[1];
+    cursor += d_size[2];
 
     for (j = 0; j < 6; j++) {
-      eol = ans_strtod(cursor, nblock_fmt.f_size, &nodes[6 * i + j]);
+      eol = ans_strtod(cursor, f_size, &nodes[6 * i + j]);
       if (eol) {
         break;
       } else {
-        cursor += nblock_fmt.f_size;
+        cursor += f_size;
       }
     }
 
