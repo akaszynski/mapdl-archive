@@ -1,36 +1,83 @@
 #include <errno.h>
+#include <time.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+// consider using fgets_unlocked when compiling with GNU
+
+#if defined(_WIN32) || defined(_WIN64)
+/* We are on Windows */
+# define strtok_r strtok_s
+#endif
+
+// #define DEBUG
+
+  static const double DIV_OF_TEN[] = {
+    1.0e-0,
+    1.0e-1,
+    1.0e-2,
+    1.0e-3,
+    1.0e-4,
+    1.0e-5,
+    1.0e-6,
+    1.0e-7,
+    1.0e-8,
+    1.0e-9,
+    1.0e-10,
+    1.0e-11,
+    1.0e-12,
+    1.0e-13,
+    1.0e-14,
+    1.0e-15,
+    1.0e-16,
+    1.0e-17,
+    1.0e-18,
+    1.0e-19,
+    1.0e-20,
+    1.0e-21,
+    1.0e-22,
+    1.0e-23,
+    1.0e-24,
+  };
+
+
+static inline double power_of_ten(int exponent) {
+    double result = 1.0;
+    double base = (exponent < 0) ? 0.1 : 10.0;
+    int abs_exponent = abs(exponent);
+    for (int i = 0; i < abs_exponent; ++i) {
+        result *= base;
+    }
+    return result;
+}
+
 //=============================================================================
 // Fast string to integer convert to ANSYS formatted integers
 //=============================================================================
-__inline int fast_atoi(char *raw, int intsz) {
+static inline int fast_atoi(const char *raw, const int intsz) {
+    int val = 0;
+    int c;
+    char current_char;
 
-  int val;
-  int c;
+    for (c = 0; c < intsz; ++c) {
+        current_char = *raw++;
 
-  val = 0;
-  for (c = 0; c < intsz; ++c) {
-    // Seek through white space
-    if (raw[0] == ' ') {
-      ++raw;
-      continue;
+        // Multiply by 10 only if current_char is a digit
+        if (current_char >= '0' && current_char <= '9') {
+            val = val * 10 + (current_char - '0');
+        }
     }
 
-    val = val * 10 + (raw[0] - '0');
-    ++raw;
-  }
-  return val;
+    return val;
 }
 
 //=============================================================================
 // Checks for negative character
 //=============================================================================
-__inline int checkneg(char *raw, int intsz) {
+static inline int checkneg(char *raw, int intsz) {
   int c;
   for (c = 0; c < intsz; ++c) {
     if (raw[0] == '-') {
@@ -47,14 +94,14 @@ __inline int checkneg(char *raw, int intsz) {
 // "        -6.01203 "
 //
 // fltsz : Number of characters to read in a floating point number
-__inline int ans_strtod(char *raw, int fltsz, double *arr) {
-  int i;
+static inline int ans_strtod(char *raw, int fltsz, double *arr) {
+  char *end = raw + fltsz;
   double sign = 1;
 
-  for (i = 0; i < fltsz; i++) {
+  while (raw < end) {
     if (*raw == '\r' || *raw == '\n') {
-      // value is zero then
-      arr[0] = 0;
+      // line empty, value is zero
+      *arr = 0;
       /* printf("EOL"); */
       return 1;
     } else if (*raw != ' ') { // always skip whitespace
@@ -67,29 +114,33 @@ __inline int ans_strtod(char *raw, int fltsz, double *arr) {
   if (*raw == '-') {
     sign = -1;
     ++raw;
-    ++i;
   }
 
   // next value is always a number
-  double val = *raw++ - '0';
-  i++;
-
-  // next value is always a "."
-  raw++;
-  i++;
+  // Use integer arithmetric and then convert to a float
+  uint64_t val_int = *raw++ - '0';
+  raw++;  // next value is always a "."
 
   // Read through the rest of the number
-  double k = 0.1;
-  for (; i < fltsz; i++) {
+  int decimal_digits = 0;
+  while (raw < end) {
     if (*raw == 'e' || *raw == 'E') { // incredibly, can be lowercase
       break;
     } else if (*raw >= '0' && *raw <= '9') {
-      val += (*raw++ - '0') * k;
-      k *= 0.1;
+      val_int = val_int * 10 + (*raw++ - '0');
+      decimal_digits++;
     }
   }
 
-  // Might have scientific notation left, for example:
+  // Compute the floating-point value
+  double val;
+  if (decimal_digits < 24){
+    val = (double)val_int * DIV_OF_TEN[decimal_digits];
+  } else {
+    val = (double)val_int * power_of_ten(10);
+  }
+
+  // Might have scientific notation remaining, for example:
   // 1.0000000000000E-001
   int evalue = 0;
   int esign = 1;
@@ -100,17 +151,30 @@ __inline int ans_strtod(char *raw, int fltsz, double *arr) {
       esign = -1;
     }
     raw++;
-    i++;
-    i++; // skip E and sign
-    /* printf(" %d<%d ", i, fltsz); */
-    for (; i < fltsz; i++) {
+
+    while (raw < end) {
       // read to whitespace or end of the line
       if (*raw == ' ' || *raw == '\r' || *raw == '\n') {
         break;
       }
       evalue = evalue * 10 + (*raw++ - '0');
     }
-    val *= pow(10, esign * evalue);
+    // printf("%d\n", evalue);
+    // val *= pow10(evalue);
+    if (esign == 1) {
+      val *= power_of_ten(evalue);
+
+      // while (evalue > 0) {  // raises value to the power of the exponent
+      //   val *= 10;
+      //   evalue--;
+      // }
+    } else {
+      val /= power_of_ten(evalue);
+      // while (evalue > 0) {
+      //   val *= 0.1;
+      //   evalue--;
+      // }
+    }
   }
 
   // seek through end of float value
@@ -123,6 +187,8 @@ __inline int ans_strtod(char *raw, int fltsz, double *arr) {
 
   return 0; // Return 0 when a number has a been read
 }
+
+
 
 static inline double ans_strtod2(char *raw, int fltsz) {
   int i;
@@ -214,7 +280,7 @@ int read_nblock(char *raw, int *nnum, double *nodes, int nnodes, int *intsz,
                 int fltsz, int64_t *n) {
 
   // set to start of the NBLOCK
-  raw += n[0];
+  raw += *n;
   int64_t len_orig = strlen(raw);
   int i, j, i_val, eol;
 
@@ -259,7 +325,7 @@ int read_nblock(char *raw, int *nnum, double *nodes, int nnodes, int *intsz,
   }
 
   // return file position
-  n[0] += len_orig - strlen(raw);
+  *n += len_orig - strlen(raw);
   return i;
 }
 
@@ -453,6 +519,126 @@ int read_eblock(char *raw, int *elem_off, int *elem, int nelem, int intsz,
   return c;
 }
 
+int read_eblock_cfile(FILE *cfile, int *elem_off, int *elem, int nelem) {
+  int i, j, nnode;
+
+  // set to start of the NBLOCK
+  char line[400];
+  char *cursor = line;
+
+  // Get size of integer
+    if (fgets(line, sizeof(line), cfile) == NULL) {
+      return 0;
+    }
+
+    char* i_pos = strchr(line, 'i');
+    char* close_paren_pos = strchr(line, ')');
+    if (i_pos == NULL || close_paren_pos == NULL || i_pos > close_paren_pos) {
+      fprintf(stderr, "Invalid line format\n");
+      return 0;
+    }
+
+    int isz;
+    sscanf(i_pos + 1, "%d", &isz);
+
+  // Loop through elements
+  int c= 0;
+  for (i = 0; i < nelem; ++i) {
+    // store start of each element
+    elem_off[i] = c;
+
+    fgets(line, sizeof(line), cfile); cursor = line;
+
+    // It's possible that less nodes are written to the record than
+    // indicated.  In this case the line starts with a -1
+
+    // Check if at end of the block
+    if (checkneg(cursor, isz)) {
+      cursor += isz;
+      break;
+    }
+
+    // ANSYS archive format:
+    // Field 1: material reference number
+    elem[c++] = fast_atoi(cursor, isz);
+    cursor += isz;
+
+    // Field 2: element type number
+    elem[c++] = fast_atoi(cursor, isz);
+    cursor += isz;
+
+    // Field 3: real constant reference number
+    elem[c++] = fast_atoi(cursor, isz);
+    cursor += isz;
+
+    // Field 4: section number
+    elem[c++] = fast_atoi(cursor, isz);
+    cursor += isz;
+
+    // Field 5: element coordinate system
+    elem[c++] = fast_atoi(cursor, isz);
+    cursor += isz;
+
+    // Field 6: Birth/death flag
+    elem[c++] = fast_atoi(cursor, isz);
+    cursor += isz;
+
+    // Field 7: Solid model reference
+    elem[c++] = fast_atoi(cursor, isz);
+    cursor += isz;
+
+    // Field 8: Coded shape key
+    elem[c++] = fast_atoi(cursor, isz);
+    cursor += isz;
+
+    // Field 9: Number of nodes
+    nnode = fast_atoi(cursor, isz);
+    cursor += isz;
+
+  //   /* // sanity check */
+  //   /* if (nnode > 20){ */
+  //   /*   printf("Element %d\n", i); */
+  //   /*   perror("Greater than 20 nodes\n"); */
+  //   /*   exit(1); */
+  //   /* } */
+
+    // Field 10: Not Used
+    cursor += isz;
+
+    // Field 11: Element number
+    elem[c++] = fast_atoi(cursor, isz);
+    cursor += isz;
+    /* printf("reading element %d\n", elem[c - 1]); */
+
+    // Need an additional value for consistency with other formats
+    elem[c++] = 0;
+
+    // Read nodes in element
+    for (j = 0; j < nnode; j++) {
+      /* printf("reading node %d\n", j); */
+      // skip through EOL
+      if (*cursor == '\r' || *cursor == '\n'){
+        fgets(line, sizeof(line), cfile); cursor = line;
+      }
+      elem[c++] = fast_atoi(cursor, isz);
+      cursor += isz;
+    }
+
+    // Edge case where missing midside nodes are not written (because
+    // MAPDL refuse to write zeros at the end of a line)
+    if (nnode < 20 && nnode > 10) {
+      for (j = nnode; j < 20; j++) {
+        elem[c++] = 0;
+      }
+    }
+  }
+
+  // Return total data read
+  elem_off[nelem] = c;
+  return c;
+}
+
+
 // Simply write an array to disk as ASCII
 int write_array_ascii(const char *filename, const double *arr,
                       const int nvalues) {
@@ -466,4 +652,68 @@ int write_array_ascii(const char *filename, const double *arr,
   fclose(stream);
 
   return 0;
+}
+
+
+int read_nblock_cfile(FILE *cfile, int *nnum, double *nodes, int nnodes, int* d_size, int f_size) {
+
+  int i, j, i_val, eol;
+  char line[256];
+
+  for (i = 0; i < nnodes; i++) {
+    // Read a line from the file
+    if (fgets(line, sizeof(line), cfile) == NULL) {
+      break;
+    }
+
+    // It's possible that less nodes are written to the record than
+    // indicated.  In this case the line starts with a -1
+    if (line[0] == '-') {
+      break;
+    }
+
+    char *cursor = line;
+
+    i_val = fast_atoi(cursor, d_size[0]);
+    /* printf("%8d    \n", i_val); */
+    nnum[i] = i_val;
+
+    cursor += d_size[0];
+    cursor += d_size[1];
+    cursor += d_size[2];
+
+    for (j = 0; j < 6; j++) {
+      eol = ans_strtod(cursor, f_size, &nodes[6 * i + j]);
+      if (eol) {
+        break;
+      } else {
+        cursor += f_size;
+      }
+    }
+
+    // remaining are zeros
+    for (; j < 6; j++) {
+      nodes[6 * i + j] = 0;
+    }
+
+    /* debug output */
+// #ifdef DEBUG
+//     for (j = 0; j < 6; j++) {
+//         printf("  %lf", nodes[6 * i + j]);
+//     }
+//     printf("\n");
+// #endif
+
+    // possible whitespace (occurs in hypermesh generated files)
+    while (*cursor == ' ') {
+      ++cursor;
+    }
+
+    // handle newline characters
+    while (*cursor == '\r' || *cursor == '\n') {
+      ++cursor;
+    }
+  }
+
+  return i;
 }

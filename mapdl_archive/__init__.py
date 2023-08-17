@@ -1,4 +1,4 @@
-import os
+"""MAPDL archive reader."""
 
 from mapdl_archive import examples
 from mapdl_archive._version import __version__

@@ -1,5 +1,6 @@
 """
-Available as of 20.2:
+Elements available to MAPDL 2020R2.
+
 LINK1
 PLANE2
 BEAM3

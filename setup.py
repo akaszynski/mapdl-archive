@@ -5,7 +5,11 @@ import os
 import numpy as np
 from setuptools import Extension, setup
 
-extra_compile_args = ["/O2", "/w"] if os.name == "nt" else ["-O3", "-w"]
+DEBUG = False
+if DEBUG:
+    extra_compile_args = ["-O0", "-g"]
+else:
+    extra_compile_args = ["/O2", "/w"] if os.name == "nt" else ["-O3", "-w"]
 
 
 # Get version from version info
@@ -43,6 +47,12 @@ setup(
     # Build cython modules
     include_dirs=[np.get_include()],
     ext_modules=[
+        Extension(
+            "mapdl_archive._relaxmidside",
+            ["mapdl_archive/cython/_relaxmidside.pyx"],
+            extra_compile_args=extra_compile_args,
+            language="c",
+        ),
         Extension(
             "mapdl_archive._archive",
             [

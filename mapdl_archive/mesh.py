@@ -2,7 +2,7 @@
 import numpy as np
 from pyvista import UnstructuredGrid
 
-from mapdl_archive import _archive, _reader
+from mapdl_archive import _reader, _relaxmidside
 from mapdl_archive.elements import ETYPE_MAP
 
 INVALID_ALLOWABLE_TYPES = TypeError(
@@ -71,7 +71,7 @@ TARGE170_MAP = {
 
 
 def unique_rows(a):
-    """Returns unique rows of an array and the indices of those rows."""
+    """Return unique rows of an array and the indices of those rows."""
     if not a.flags.c_contiguous:
         a = np.ascontiguousarray(a)
 
@@ -82,7 +82,7 @@ def unique_rows(a):
 
 
 class Mesh:
-    """Common class between Archive, and result mesh"""
+    """Common class between Archive, and result mesh."""
 
     def __init__(
         self,
@@ -97,6 +97,7 @@ class Mesh:
         rnum=[],
         keyopt={},
     ):
+        """Initialize the mesh."""
         self._etype = None  # internal element type reference
         self._grid = None  # VTK grid
         self._surf_cache = None  # cached external surface
@@ -129,21 +130,21 @@ class Mesh:
 
     @property
     def _surf(self):
-        """External surface"""
+        """Return the external surface."""
         if self._surf_cache is None:
             self._surf_cache = self._grid.extract_surface()
         return self._surf_cache
 
     @property
     def _has_nodes(self):
-        """Returns True when has nodes"""
+        """Return ``True`` when has nodes."""
         # if isinstance(self._nodes, np.ndarray):
         # return bool(self._nodes.size)
         return len(self.nodes)
 
     @property
     def _has_elements(self):
-        """Returns True when geometry has elements"""
+        """Return ``True`` when geometry has elements."""
         if self._elem is None:
             return False
 
@@ -160,14 +161,13 @@ class Mesh:
         fix_midside=True,
         additional_checking=False,
     ):
-        """Convert raw ANSYS nodes and elements to a VTK UnstructuredGrid
+        """Convert raw ANSYS nodes and elements to an UnstructuredGrid.
 
         Parameters
         ----------
         fix_midside : bool, optional
-            Adds additional midside nodes when ``True``.  When
-            ``False``, missing ANSYS cells will simply point to the
-            first node.
+            Adds additional midside nodes when ``True``. When ``False``,
+            missing ANSYS cells will simply point to the first node.
 
         """
         if not self._has_nodes or not self._has_elements:
@@ -278,13 +278,13 @@ class Mesh:
 
     @property
     def key_option(self):
-        """Additional key options for element types
+        """Return additional key options for element types.
 
         Examples
         --------
-        >>> from ansys.mapdl import reader as pymapdl_reader
+        >>> import mapdl_archive
         >>> from mapdl_archive import examples
-        >>> archive = pymapdl_reader.Archive(examples.hexarchivefile)
+        >>> archive = mapdl_archive.Archive(examples.hexarchivefile)
         >>> archive.key_option
         {1: [[1, 11]]}
         """
@@ -292,13 +292,13 @@ class Mesh:
 
     @property
     def material_type(self):
-        """Material type index of each element in the archive.
+        """Return the material type index of each element in the archive.
 
         Examples
         --------
-        >>> from ansys.mapdl import reader as pymapdl_reader
+        >>> import mapdl_archive
         >>> from mapdl_archive import examples
-        >>> archive = pymapdl_reader.Archive(examples.hexarchivefile)
+        >>> archive = mapdl_archive.Archive(examples.hexarchivefile)
         >>> archive.material_type
         array([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
                1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
@@ -311,17 +311,17 @@ class Mesh:
 
     @property
     def element_components(self):
-        """Element components for the archive.
+        """Return Element components for the archive.
 
-        Output is a dictionary of element components.  Each entry is an
-        array of MAPDL element numbers corresponding to the element
-        component.  The keys are element component names.
+        Output is a dictionary of element components. Each entry is an array of
+        MAPDL element numbers corresponding to the element component. The keys
+        are element component names.
 
         Examples
         --------
-        >>> from ansys.mapdl import reader as pymapdl_reader
+        >>> import mapdl_archive
         >>> from mapdl_archive import examples
-        >>> archive = pymapdl_reader.Archive(examples.hexarchivefile)
+        >>> archive = mapdl_archive.Archive(examples.hexarchivefile)
         >>> archive.element_components
         {'ECOMP1 ': array([17, 18, 21, 22, 23, 24, 25, 26, 27, 28, 29,
                            30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40],
@@ -333,17 +333,17 @@ class Mesh:
 
     @property
     def node_components(self):
-        """Node components for the archive.
+        """Return the node components for the archive.
 
-        Output is a dictionary of node components.  Each entry is an
-        array of MAPDL node numbers corresponding to the node
-        component.  The keys are node component names.
+        Output is a dictionary of node components. Each entry is an array of
+        MAPDL node numbers corresponding to the node component. The keys are
+        node component names.
 
         Examples
         --------
-        >>> from ansys.mapdl import reader as pymapdl_reader
+        >>> import mapdl_archive
         >>> from mapdl_archive import examples
-        >>> archive = pymapdl_reader.Archive(examples.hexarchivefile)
+        >>> archive = mapdl_archive.Archive(examples.hexarchivefile)
         >>> archive.node_components
         {'NCOMP2  ': array([  1,   2,   3,   4,   5,   6,   7,   8,
                              14, 15, 16, 17, 18, 19, 20, 21, 43, 44,
@@ -362,16 +362,16 @@ class Mesh:
 
     @property
     def elem_real_constant(self):
-        """Real constant reference for each element.
+        """Return the real constant reference for each element.
 
         Use the data within ``rlblock`` and ``rlblock_num`` to get the
         real constant datat for each element.
 
         Examples
         --------
-        >>> from ansys.mapdl import reader as pymapdl_reader
+        >>> import mapdl_archive
         >>> from mapdl_archive import examples
-        >>> archive = pymapdl_reader.Archive(examples.hexarchivefile)
+        >>> archive = mapdl_archive.Archive(examples.hexarchivefile)
         >>> archive.elem_real_constant
         array([ 1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,
                 1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,
@@ -389,15 +389,13 @@ class Mesh:
 
     @property
     def etype(self):
-        """Element type of each element.
-
-        This is the ansys element type for each element.
+        """Return the element type of each element.
 
         Examples
         --------
-        >>> from ansys.mapdl import reader as pymapdl_reader
+        >>> import mapdl_archive
         >>> from mapdl_archive import examples
-        >>> archive = pymapdl_reader.Archive(examples.hexarchivefile)
+        >>> archive = mapdl_archive.Archive(examples.hexarchivefile)
         >>> archive.etype
         array([ 45,  45,  45,  45,  45,  45,  45,  45,  45,  45,  45,
                 45,  45,  45,  45,  45,  45,  45,  45,  92,  92,  92,
@@ -409,8 +407,8 @@ class Mesh:
 
         Notes
         -----
-        Element types are listed below.  Please see the APDL Element
-        Reference for more details:
+        Element types are listed below. Please see the APDL Element Reference
+        for more details:
 
         https://www.mm.bme.hu/~gyebro/files/vem/ansys_14_element_reference.pdf
         """
@@ -422,20 +420,20 @@ class Mesh:
 
     @property
     def _ans_etype(self):
-        """FIELD 1 : element type number"""
+        """Return field 1, the element type number."""
         if self._etype_cache is None:
             self._etype_cache = self._elem[self._elem_off[:-1] + 1]
         return self._etype_cache
 
     @property
     def section(self):
-        """Section number
+        """Return the section number.
 
         Examples
         --------
-        >>> from ansys.mapdl import reader as pymapdl_reader
+        >>> import mapdl_archive
         >>> from mapdl_archive import examples
-        >>> archive = pymapdl_reader.Archive(examples.hexarchivefile)
+        >>> archive = mapdl_archive.Archive(examples.hexarchivefile)
         >>> archive.section
         array([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
                1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
@@ -446,13 +444,13 @@ class Mesh:
         return self._secnum
 
     def element_coord_system(self):
-        """Element coordinate system number
+        """Return the element coordinate system number.
 
         Examples
         --------
-        >>> from ansys.mapdl import reader as pymapdl_reader
+        >>> import mapdl_archive
         >>> from mapdl_archive import examples
-        >>> archive = pymapdl_reader.Archive(examples.hexarchivefile)
+        >>> archive = mapdl_archive.Archive(examples.hexarchivefile)
         >>> archive.element_coord_system
         array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -464,7 +462,7 @@ class Mesh:
 
     @property
     def elem(self):
-        """List of elements containing raw ansys information.
+        """Return the list of elements containing raw element information.
 
         Each element contains 10 items plus the nodes belonging to the
         element.  The first 10 items are:
@@ -483,9 +481,9 @@ class Mesh:
 
         Examples
         --------
-        >>> from ansys.mapdl import reader as pymapdl_reader
+        >>> import mapdl_archive
         >>> from mapdl_archive import examples
-        >>> archive = pymapdl_reader.Archive(examples.hexarchivefile)
+        >>> archive = mapdl_archive.Archive(examples.hexarchivefile)
         >>> archive.elem
         [array([  1,   4,  19,  15,  63,  91, 286, 240,   3,  18,  17,
                  16,  81, 276, 267, 258,  62,  90, 285, 239],
@@ -501,13 +499,13 @@ class Mesh:
 
     @property
     def enum(self):
-        """ANSYS element numbers.
+        """Return the MAPDl element numbers.
 
         Examples
         --------
-        >>> from ansys.mapdl import reader as pymapdl_reader
+        >>> import mapdl_archive
         >>> from mapdl_archive import examples
-        >>> archive = pymapdl_reader.Archive(examples.hexarchivefile)
+        >>> archive = mapdl_archive.Archive(examples.hexarchivefile)
         >>> archive.enum
         array([    1,     2,     3, ...,  9998,  9999, 10000])
         """
@@ -517,13 +515,13 @@ class Mesh:
 
     @property
     def nnum(self):
-        """Array of node numbers.
+        """Return the array of node numbers.
 
         Examples
         --------
-        >>> from ansys.mapdl import reader as pymapdl_reader
+        >>> import mapdl_archive
         >>> from mapdl_archive import examples
-        >>> archive = pymapdl_reader.Archive(examples.hexarchivefile)
+        >>> archive = mapdl_archive.Archive(examples.hexarchivefile)
         >>> archive.nnum
         array([    1,     2,     3, ..., 19998, 19999, 20000])
         """
@@ -531,16 +529,16 @@ class Mesh:
 
     @property
     def ekey(self):
-        """Element type key
+        """Return the element type key.
 
         Array containing element type numbers in the first column and
         the element types (like SURF154) in the second column.
 
         Examples
         --------
-        >>> from ansys.mapdl import reader as pymapdl_reader
+        >>> import mapdl_archive
         >>> from mapdl_archive import examples
-        >>> archive = pymapdl_reader.Archive(examples.hexarchivefile)
+        >>> archive = mapdl_archive.Archive(examples.hexarchivefile)
         >>> archive.ekey
         array([[  1,  45],
                [  2,  95],
@@ -551,13 +549,13 @@ class Mesh:
 
     @property
     def rlblock(self):
-        """Real constant data from the RLBLOCK.
+        """Return the real constant data from the RLBLOCK.
 
         Examples
         --------
-        >>> from ansys.mapdl import reader as pymapdl_reader
+        >>> import mapdl_archive
         >>> from mapdl_archive import examples
-        >>> archive = pymapdl_reader.Archive(examples.hexarchivefile)
+        >>> archive = mapdl_archive.Archive(examples.hexarchivefile)
         >>> archive.rlblock
         [[0.   , 0.   , 0.   , 0.   , 0.   , 0.   , 0.02 ],
          [0.   , 0.   , 0.   , 0.   , 0.   , 0.   , 0.01 ],
@@ -568,13 +566,13 @@ class Mesh:
 
     @property
     def rlblock_num(self):
-        """Indices from the real constant data
+        """Return the indices from the real constant data.
 
         Examples
         --------
-        >>> from ansys.mapdl import reader as pymapdl_reader
+        >>> import mapdl_archive
         >>> from mapdl_archive import examples
-        >>> archive = pymapdl_reader.Archive(examples.hexarchivefile)
+        >>> archive = mapdl_archive.Archive(examples.hexarchivefile)
         >>> archive.rnum
         array([60, 61, 62, 63])
         """
@@ -582,13 +580,13 @@ class Mesh:
 
     @property
     def nodes(self):
-        """Array of nodes.
+        """Return the array of nodes of the mesh.
 
         Examples
         --------
-        >>> from ansys.mapdl import reader as pymapdl_reader
+        >>> import mapdl_archive
         >>> from mapdl_archive import examples
-        >>> archive = pymapdl_reader.Archive(examples.hexarchivefile)
+        >>> archive = mapdl_archive.Archive(examples.hexarchivefile)
         >>> archive.nodes
         [[0.   0.   0.  ]
          [1.   0.   0.  ]
@@ -604,13 +602,13 @@ class Mesh:
 
     @property
     def node_angles(self):
-        """Node angles from the archive file.
+        """Return the node angles from the archive file.
 
         Examples
         --------
-        >>> from ansys.mapdl import reader as pymapdl_reader
+        >>> import mapdl_archive
         >>> from mapdl_archive import examples
-        >>> archive = pymapdl_reader.Archive(examples.hexarchivefile)
+        >>> archive = mapdl_archive.Archive(examples.hexarchivefile)
         >>> archive.nodes
         [[0.   0.   0.  ]
          [0.   0.   0.  ]
@@ -619,18 +617,20 @@ class Mesh:
          [0.   0.   0.  ]
          [0.   0.   0.  ]
          [0.   0.   0.  ]]
+
         """
         if self._node_angles is None:
             self._node_angles = np.ascontiguousarray(self._nodes[:, 3:])
         return self._node_angles
 
     def __repr__(self):
+        """Return the representation of the mesh."""
         txt = "ANSYS Mesh\n"
-        txt += "  Number of Nodes:              %d\n" % len(self.nnum)
-        txt += "  Number of Elements:           %d\n" % len(self.enum)
-        txt += "  Number of Element Types:      %d\n" % len(self.ekey)
-        txt += "  Number of Node Components:    %d\n" % len(self.node_components)
-        txt += "  Number of Element Components: %d\n" % len(self.element_components)
+        txt += f"  Number of Nodes:              {len(self.nnum)}\n"
+        txt += f"  Number of Elements:           {len(self.enum)}\n"
+        txt += f"  Number of Element Types:      {len(self.ekey)}\n"
+        txt += f"  Number of Node Components:    {len(self.node_components)}\n"
+        txt += f"  Number of Element Components: {len(self.element_components)}\n"
         return txt
 
     def save(
@@ -641,28 +641,24 @@ class Mesh:
         allowable_types=[],
         null_unallowed=False,
     ):
-        """Save the geometry as a vtk file
+        """Save the geometry as a vtk file.
 
         Parameters
         ----------
         filename : str, pathlib.Path
             Filename of output file. Writer type is inferred from
             the extension of the filename.
-
         binary : bool, optional
             If ``True``, write as binary, else ASCII.
-
         force_linear : bool, optional
             This parser creates quadratic elements if available.  Set
             this to True to always create linear elements.  Defaults
             to False.
-
         allowable_types : list, optional
             Allowable element types.  Defaults to all valid element
             types in ``mapdl_archive.elements.valid_types``
 
             See ``help(mapdl_archive.elements)`` for available element types.
-
         null_unallowed : bool, optional
             Elements types not matching element types will be stored
             as empty (null) elements.  Useful for debug or tracking
@@ -670,12 +666,13 @@ class Mesh:
 
         Examples
         --------
-        >>> geom.save('mesh.vtk')
+        >>> geom.save("mesh.vtk")
 
         Notes
         -----
         Binary files write much faster than ASCII and have a smaller
         file size.
+
         """
         grid = self._parse_vtk(
             allowable_types=allowable_types,
@@ -686,14 +683,14 @@ class Mesh:
 
     @property
     def n_node(self):
-        """Number of nodes"""
+        """Return the number of nodes."""
         if not self._has_nodes:
             return 0
         return self.nodes.shape[0]
 
     @property
     def n_elem(self):
-        """Number of nodes"""
+        """Return the number of nodes."""
         if not self._has_elements:
             return 0
         return len(self.enum)
@@ -716,7 +713,7 @@ class Mesh:
 
     @property
     def tshape_key(self, as_array=False):
-        """Dict with the mapping between element type and element shape.
+        """Return a dictionary with the mapping between element type and element shape.
 
         TShape is only applicable to contact elements.
         """
@@ -729,7 +726,7 @@ class Mesh:
 
 
 def fix_missing_midside(cells, nodes, celltypes, offset, angles, nnum):
-    """Adds missing midside nodes to cells.
+    """Add missing midside nodes to cells.
 
     ANSYS sometimes does not add midside nodes, and this is denoted in
     the element array with a ``0``.  When translated to VTK, this is
@@ -751,7 +748,7 @@ def fix_missing_midside(cells, nodes, celltypes, offset, angles, nnum):
 
     # Set new midside nodes directly between their edge nodes
     temp_nodes = nodes_new.copy()
-    _archive.reset_midside(cells, celltypes, offset, temp_nodes)
+    _relaxmidside.reset_midside(cells, celltypes, offset, temp_nodes)
 
     # merge midside nodes
     unique_nodes, idx_a, idx_b = unique_rows(temp_nodes[nnodes:])
