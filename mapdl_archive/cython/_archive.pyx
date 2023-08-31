@@ -58,7 +58,7 @@ def py_write_nblock(filename, const int [::1] node_id, int max_node_id,
         File open mode. Default is 'w' (write), other options include 'a' (append).
 
     sig_digits : int, default: 13
-        Number of significant digits to use when writing the node data. Default is 13.
+        Number of significant digits to use when writing the nodes.
 
     Raises
     ------
@@ -115,7 +115,7 @@ def py_write_nblock_float(filename, const int [::1] node_id, int max_node_id,
         File open mode. Default is 'w' (write), other options include 'a' (append).
 
     sig_digits : int, default: 13
-        Number of significant digits to use when writing the node data. Default is 13.
+        Number of significant digits to use when writing the nodes.
 
     Raises
     ------

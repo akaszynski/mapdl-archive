@@ -31,17 +31,15 @@ class Archive(Mesh):
     filename : string, pathlib.Path
         Filename of block formatted cdb file
 
-    read_parameters : bool, optional
-        Optionally read parameters from the archive file.  Default
-        ``False``.
+    read_parameters : bool, default: False
+        Optionally read parameters from the archive file.
 
-    parse_vtk : bool, optional
+    parse_vtk : bool, default: True
         When ``True``, parse the raw data into to VTK format.
 
-    force_linear : bool, optional
-        This parser creates quadratic elements if available.  Set
-        this to True to always create linear elements.  Defaults
-        to False.
+    force_linear : bool, default: False
+        This parser creates quadratic elements if available. Set
+        this to ``True`` to always create linear elements.
 
     allowable_types : list, optional
         Allowable element types.  Defaults to all valid element
@@ -49,10 +47,10 @@ class Archive(Mesh):
 
         See ``help(mapdl_archive.elements)`` for available element types.
 
-    null_unallowed : bool, optional
+    null_unallowed : bool, default: False
         Elements types not matching element types will be stored
         as empty (null) elements.  Useful for debug or tracking
-        element numbers.  Default False.
+        element numbers.
 
     verbose : bool, optional
         Print out each step when reading the archive file.  Used for
@@ -626,7 +624,7 @@ def save_as_archive(
                     write_cmblock(fid, items, node_key, "ELEM")
 
 
-def write_nblock(filename, node_id, pos, angles=None, mode="w"):
+def write_nblock(filename, node_id, pos, angles=None, mode="w", sig_digits=13):
     """Write nodes and node angles to file.
 
     Parameters
@@ -641,6 +639,9 @@ def write_nblock(filename, node_id, pos, angles=None, mode="w"):
         Writes the node angles for each node when included.
     mode : str, default: "w"
         Write mode.
+    sig_digits : int, default: 13
+        Number of significant digits to use when writing the nodes. Must be
+        greater than 0.
 
     Examples
     --------
@@ -653,9 +654,17 @@ def write_nblock(filename, node_id, pos, angles=None, mode="w"):
     >>> mapdl_archive.write_nblock("nblock.inp", point_ids, points)
 
     """
-    assert pos.ndim == 2 and pos.shape[1] == 3, "Invalid position array"
+    if sig_digits < 1:
+        raise ValueError(f"`sig_digits` must be greater than 0, got {sig_digits}")
+    if pos.ndim != 2 or pos.shape[1] != 3:
+        raise ValueError(
+            f"Invalid position array shape {pos.shape}. Should be shaped `(n, 3)`."
+        )
     if angles is not None:
-        assert angles.ndim == 2 and angles.shape[1] == 3, "Invalid angle array"
+        if angles.ndim != 2 or angles.shape[1] != 3:
+            raise ValueError(
+                f"Invalid angles array shape {angles.shape}. Should be shaped `(n, 3)`."
+            )
 
     node_id = node_id.astype(np.int32, copy=False)
 
@@ -668,33 +677,16 @@ def write_nblock(filename, node_id, pos, angles=None, mode="w"):
         pos = pos[sidx]
 
     if angles is not None:
-        if pos.dtype == np.float32:
-            angles = angles.astype(pos.dtype, copy=False)
-            _archive.py_write_nblock_float(
-                filename, node_id, node_id[-1], pos, angles, mode
-            )
-        else:
-            _archive.py_write_nblock(filename, node_id, node_id[-1], pos, angles, mode)
-
+        angles = angles.astype(pos.dtype, copy=False)
     else:
-        if pos.dtype == np.float32:
-            _archive.py_write_nblock_float(
-                filename,
-                node_id,
-                node_id[-1],
-                pos,
-                np.empty((0, 0), dtype=np.float32),
-                mode,
-            )
-        else:
-            _archive.py_write_nblock(
-                filename,
-                node_id,
-                node_id[-1],
-                pos,
-                np.empty((0, 0), dtype=np.float64),
-                mode,
-            )
+        angles = np.empty((0, 0), dtype=pos.dtype)
+
+    if pos.dtype == np.float32:
+        write_func = _archive.py_write_nblock_float
+    else:
+        write_func = _archive.py_write_nblock
+
+    write_func(filename, node_id, node_id[-1], pos, angles, mode, sig_digits)
 
 
 def write_cmblock(filename, items, comp_name, comp_type, digit_width=10, mode="w"):
