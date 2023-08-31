@@ -243,6 +243,7 @@ def save_as_archive(
     include_solid_elements=True,
     include_components=True,
     exclude_missing=False,
+    node_sig_digits=13,
 ):
     """Write FEM as an ANSYS APDL archive file.
 
@@ -327,6 +328,10 @@ def save_as_archive(
         nodes. This allows you to exclude midside nodes for certain element
         types (e.g. ``SOLID186``). Missing midside nodes are identified as
         ``-1`` in the ``"ansys_node_num"`` array.
+
+    node_sig_digits : int, default: 13
+        Number of significant digits to use when writing the nodes. Must be
+        greater than 0.
 
     Examples
     --------
@@ -587,9 +592,12 @@ def save_as_archive(
             nodenum[~missing_mask],
             grid.points[~missing_mask],
             mode="a",
+            sig_digits=node_sig_digits,
         )
     else:
-        write_nblock(filename, nodenum, grid.points, mode="a")
+        write_nblock(
+            filename, nodenum, grid.points, mode="a", sig_digits=node_sig_digits
+        )
 
     # write remainder of eblock
     _write_eblock(
