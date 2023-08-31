@@ -36,7 +36,7 @@ repos:
   - id: codespell
 
 - repo: https://github.com/pycqa/pydocstyle
-  rev: 6.1.1
+  rev: 6.3.0
   hooks:
   - id: pydocstyle
     additional_dependencies: [toml]
@@ -48,7 +48,7 @@ repos:
   - id: clang-format
     files: |
       (?x)^(
-        ansys/mapdl/reader/cython/[^_].*\.c.*
+        mapdl_archive/cython/[^_].*\.c.*
       )$
 
 - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -60,6 +60,6 @@ repos:
     exclude: '.*\.(cdb|rst|dat)$'
 
 - repo: https://github.com/python-jsonschema/check-jsonschema
-  rev: 0.24.1
+  rev: 0.26.3
   hooks:
     - id: check-github-workflows

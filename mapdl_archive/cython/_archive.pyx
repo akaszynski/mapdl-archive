@@ -17,9 +17,9 @@ ctypedef unsigned char uint8_t
 
 cdef extern from 'archive.h' nogil:
     int write_nblock(FILE*, const int, const int, const int*, const double*,
-                     const double*, int)
+                     const double*, int, int)
     int write_nblock_float(FILE*, const int, const int, const int*, const float*,
-                           const float*, int)
+                           const float*, int, int)
     int write_eblock(FILE*, const int, const int*, const int*, const int*,
                      const int*, const int*, const uint8_t*, const int*,
                      const int*, const int*, const int*);
@@ -32,22 +32,44 @@ cdef extern from "stdio.h":
 
 def py_write_nblock(filename, const int [::1] node_id, int max_node_id,
                     const double [:, ::1] pos, const double [:, ::1] angles,
-                    mode='w'):
+                    mode='w', sig_digits=13):
     """Write a node block to a file.
 
     Parameters
     ----------
-    fid : _io.TextIOWrapper
-        Opened Python file object.
+    filename : str
+        Name of the file to write to.
 
     node_id : np.ndarray
         Array of node ids.
 
-    pos : np.ndarray
-        Double array of node coordinates
+    max_node_id : int
+        Maximum node id.
 
-    angles : np.ndarray, optional
+    pos : np.ndarray[double]
+        2D array of node coordinates. Each row represents a node, and the
+        columns are the x, y, and z coordinates.
 
+    angles : np.ndarray[double], optional
+        2D array of angles. Each row represents a node, and the columns are the
+        angles. If not provided, all angles will be set to zero.
+
+    mode : str, optional
+        File open mode. Default is 'w' (write), other options include 'a' (append).
+
+    sig_digits : int, default: 13
+        Number of significant digits to use when writing the nodes.
+
+    Raises
+    ------
+    IOError
+        If the file cannot be opened for writing.
+
+    Notes
+    -----
+    The file will be written in the ANSYS node block format. Each line of the
+    file will contain the id, coordinates, and (optionally) angles for a single
+    node.
 
     """
     # attach the stream to the python file
@@ -61,27 +83,50 @@ def py_write_nblock(filename, const int [::1] node_id, int max_node_id,
     else:
         angles = np.zeros((1, 1), np.double)
     write_nblock(cfile, n_nodes, max_node_id, &node_id[0], &pos[0, 0],
-                 &angles[0, 0], has_angles);
+                 &angles[0, 0], has_angles, sig_digits);
     fclose(cfile)
 
 
 def py_write_nblock_float(filename, const int [::1] node_id, int max_node_id,
                           const float [:, ::1] pos, const float [:, ::1] angles,
-                          mode='w'):
+                          mode='w', sig_digits=13):
     """Write a float32 node block to a file.
 
     Parameters
     ----------
-    fid : _io.TextIOWrapper
-        Opened Python file object.
+    filename : str
+        Name of the file to write to.
 
     node_id : np.ndarray
         Array of node ids.
 
-    pos : np.float32 np.ndarray
-        Double array of node coordinates
+    max_node_id : int
+        Maximum node id.
 
-    angles : np.ndarray, optional
+    pos : np.ndarray[double]
+        2D array of node coordinates. Each row represents a node, and the
+        columns are the x, y, and z coordinates.
+
+    angles : np.ndarray[double], optional
+        2D array of angles. Each row represents a node, and the columns are the
+        angles. If not provided, all angles will be set to zero.
+
+    mode : str, optional
+        File open mode. Default is 'w' (write), other options include 'a' (append).
+
+    sig_digits : int, default: 13
+        Number of significant digits to use when writing the nodes.
+
+    Raises
+    ------
+    IOError
+        If the file cannot be opened for writing.
+
+    Notes
+    -----
+    The file will be written in the ANSYS node block format. Each line of the
+    file will contain the id, coordinates, and (optionally) angles for a single
+    node.
 
     """
     # attach the stream to the python file
@@ -94,7 +139,7 @@ def py_write_nblock_float(filename, const int [::1] node_id, int max_node_id,
     else:
         angles = np.zeros((1, 1), np.float32)
     write_nblock_float(cfile, n_nodes, max_node_id, &node_id[0], &pos[0, 0],
-                       &angles[0, 0], has_angles);
+                       &angles[0, 0], has_angles, sig_digits);
     fclose(cfile)
 
 
