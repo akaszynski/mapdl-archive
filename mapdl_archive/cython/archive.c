@@ -1,4 +1,5 @@
 #include <inttypes.h>
+#include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -20,29 +21,59 @@
 #define VTK_QUADRATIC_WEDGE 26
 #define VTK_QUADRATIC_PYRAMID 27
 
+char* create_format_str(int fields, int sig_digits) {
+    static char format_str[64];  // Buffer for our format string
+    char field_format[16];       // Buffer for a single field format string
+
+    // Leaves one whitespace, sign, one before the decimal, decimal, and four
+    // for the scientific notation
+    // For example: " -1.233333333333E+09"
+    int total_char = sig_digits + 8;
+
+    // Create a single field format string
+    sprintf(field_format, "%%%d.%dE", total_char, sig_digits);
+
+    // Start the format string with the fixed part
+    strcpy(format_str, "%8d       0       0");
+
+    // Add the field format string for each field
+    for (int i = 0; i < fields; i++) {
+        strcat(format_str, field_format);
+    }
+
+    // Add a newline to the end of the format string
+    strcat(format_str, "\n");
+
+    return format_str;
+}
+
 // Write node IDs, node coordinates, and angles to file as a NBLOCK
 int write_nblock(FILE *file, const int n_nodes, const int max_node_id,
                  const int *node_id, const double *nodes, const double *angles,
-                 int has_angles) {
+                 int has_angles, int sig_digits) {
   // Header
   // Tell ANSYS to start reading the node block with 6 fields,
   // associated with a solid, the maximum node number and the number
   // of lines in the node block
   fprintf(file, "/PREP7\n");
   fprintf(file, "NBLOCK,6,SOLID,%10d,%10d\n", max_node_id, n_nodes);
-  fprintf(file, "(3i8,6e20.13)\n");
+  fprintf(file, "(3i8,6e%d.%d)\n", sig_digits + 8, sig_digits);
+
+  char *format_str;
 
   int i;
   if (has_angles) {
+    format_str = create_format_str(6, sig_digits) ;
     for (i = 0; i < n_nodes; i++) {
       fprintf(file,
-              "%8d       0       0%20.12E%20.12E%20.12E%20.12E%20.12E%20.12E\n",
+              format_str,
               node_id[i], nodes[i * 3 + 0], nodes[i * 3 + 1], nodes[i * 3 + 2],
               angles[i * 3 + 0], angles[i * 3 + 1], angles[i * 3 + 2]);
     }
   } else {
+    format_str = create_format_str(3, sig_digits) ;
     for (i = 0; i < n_nodes; i++) {
-      fprintf(file, "%8d       0       0%20.12E%20.12E%20.12E\n", node_id[i],
+      fprintf(file, format_str, node_id[i],
               nodes[i * 3 + 0], nodes[i * 3 + 1], nodes[i * 3 + 2]);
     }
   }
@@ -53,26 +84,29 @@ int write_nblock(FILE *file, const int n_nodes, const int max_node_id,
 
 int write_nblock_float(FILE *file, const int n_nodes, const int max_node_id,
                        const int *node_id, const float *nodes,
-                       const float *angles, int has_angles) {
+                       const float *angles, int has_angles, int sig_digits) {
   // Header
   // Tell ANSYS to start reading the node block with 6 fields,
   // associated with a solid, the maximum node number and the number
   // of lines in the node block
   fprintf(file, "/PREP7\n");
   fprintf(file, "NBLOCK,6,SOLID,%10d,%10d\n", max_node_id, n_nodes);
-  fprintf(file, "(3i8,6e20.13)\n");
+  fprintf(file, "(3i8,6e%d.%d)\n", sig_digits +8, sig_digits);
 
+  char *format_str;
   int i;
   if (has_angles) {
+    format_str = create_format_str(6, sig_digits) ;
     for (i = 0; i < n_nodes; i++) {
       fprintf(file,
-              "%8d       0       0%20.12E%20.12E%20.12E%20.12E%20.12E%20.12E\n",
+              format_str,
               node_id[i], nodes[i * 3 + 0], nodes[i * 3 + 1], nodes[i * 3 + 2],
               angles[i * 3 + 0], angles[i * 3 + 1], angles[i * 3 + 2]);
     }
   } else {
+    format_str = create_format_str(3, sig_digits) ;
     for (i = 0; i < n_nodes; i++) {
-      fprintf(file, "%8d       0       0%20.12E%20.12E%20.12E\n", node_id[i],
+      fprintf(file, format_str, node_id[i],
               nodes[i * 3 + 0], nodes[i * 3 + 1], nodes[i * 3 + 2]);
     }
   }
