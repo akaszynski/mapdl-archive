@@ -1,7 +1,7 @@
 #include <inttypes.h>
-#include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 // necessary for ubuntu build on azure
 #ifdef __linux__
@@ -21,30 +21,30 @@
 #define VTK_QUADRATIC_WEDGE 26
 #define VTK_QUADRATIC_PYRAMID 27
 
-char* create_format_str(int fields, int sig_digits) {
-    static char format_str[64];  // Buffer for our format string
-    char field_format[16];       // Buffer for a single field format string
+char *create_format_str(int fields, int sig_digits) {
+  static char format_str[64]; // Buffer for our format string
+  char field_format[16];      // Buffer for a single field format string
 
-    // Leaves one whitespace, sign, one before the decimal, decimal, and four
-    // for the scientific notation
-    // For example: " -1.233333333333E+09"
-    int total_char = sig_digits + 8;
+  // Leaves one whitespace, sign, one before the decimal, decimal, and four
+  // for the scientific notation
+  // For example: " -1.233333333333E+09"
+  int total_char = sig_digits + 8;
 
-    // Create a single field format string
-    sprintf(field_format, "%%%d.%dE", total_char, sig_digits);
+  // Create a single field format string
+  sprintf(field_format, "%%%d.%dE", total_char, sig_digits);
 
-    // Start the format string with the fixed part
-    strcpy(format_str, "%8d       0       0");
+  // Start the format string with the fixed part
+  strcpy(format_str, "%8d       0       0");
 
-    // Add the field format string for each field
-    for (int i = 0; i < fields; i++) {
-        strcat(format_str, field_format);
-    }
+  // Add the field format string for each field
+  for (int i = 0; i < fields; i++) {
+    strcat(format_str, field_format);
+  }
 
-    // Add a newline to the end of the format string
-    strcat(format_str, "\n");
+  // Add a newline to the end of the format string
+  strcat(format_str, "\n");
 
-    return format_str;
+  return format_str;
 }
 
 // Write node IDs, node coordinates, and angles to file as a NBLOCK
@@ -63,18 +63,17 @@ int write_nblock(FILE *file, const int n_nodes, const int max_node_id,
 
   int i;
   if (has_angles) {
-    format_str = create_format_str(6, sig_digits) ;
+    format_str = create_format_str(6, sig_digits);
     for (i = 0; i < n_nodes; i++) {
-      fprintf(file,
-              format_str,
-              node_id[i], nodes[i * 3 + 0], nodes[i * 3 + 1], nodes[i * 3 + 2],
-              angles[i * 3 + 0], angles[i * 3 + 1], angles[i * 3 + 2]);
+      fprintf(file, format_str, node_id[i], nodes[i * 3 + 0], nodes[i * 3 + 1],
+              nodes[i * 3 + 2], angles[i * 3 + 0], angles[i * 3 + 1],
+              angles[i * 3 + 2]);
     }
   } else {
-    format_str = create_format_str(3, sig_digits) ;
+    format_str = create_format_str(3, sig_digits);
     for (i = 0; i < n_nodes; i++) {
-      fprintf(file, format_str, node_id[i],
-              nodes[i * 3 + 0], nodes[i * 3 + 1], nodes[i * 3 + 2]);
+      fprintf(file, format_str, node_id[i], nodes[i * 3 + 0], nodes[i * 3 + 1],
+              nodes[i * 3 + 2]);
     }
   }
 
@@ -91,23 +90,22 @@ int write_nblock_float(FILE *file, const int n_nodes, const int max_node_id,
   // of lines in the node block
   fprintf(file, "/PREP7\n");
   fprintf(file, "NBLOCK,6,SOLID,%10d,%10d\n", max_node_id, n_nodes);
-  fprintf(file, "(3i8,6e%d.%d)\n", sig_digits +8, sig_digits);
+  fprintf(file, "(3i8,6e%d.%d)\n", sig_digits + 8, sig_digits);
 
   char *format_str;
   int i;
   if (has_angles) {
-    format_str = create_format_str(6, sig_digits) ;
+    format_str = create_format_str(6, sig_digits);
     for (i = 0; i < n_nodes; i++) {
-      fprintf(file,
-              format_str,
-              node_id[i], nodes[i * 3 + 0], nodes[i * 3 + 1], nodes[i * 3 + 2],
-              angles[i * 3 + 0], angles[i * 3 + 1], angles[i * 3 + 2]);
+      fprintf(file, format_str, node_id[i], nodes[i * 3 + 0], nodes[i * 3 + 1],
+              nodes[i * 3 + 2], angles[i * 3 + 0], angles[i * 3 + 1],
+              angles[i * 3 + 2]);
     }
   } else {
-    format_str = create_format_str(3, sig_digits) ;
+    format_str = create_format_str(3, sig_digits);
     for (i = 0; i < n_nodes; i++) {
-      fprintf(file, format_str, node_id[i],
-              nodes[i * 3 + 0], nodes[i * 3 + 1], nodes[i * 3 + 2]);
+      fprintf(file, format_str, node_id[i], nodes[i * 3 + 0], nodes[i * 3 + 1],
+              nodes[i * 3 + 2]);
     }
   }
 
