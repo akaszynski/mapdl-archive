@@ -481,6 +481,26 @@ def test_write_nblock(hex_archive, tmpdir, dtype, has_angles):
         assert np.allclose(hex_archive.node_angles, tmp_archive.node_angles)
 
 
+@pytest.mark.parametrize("sig_digits", [8, 18])
+def test_write_nblock_sig_digits(hex_archive, tmpdir, sig_digits):
+    nblock_filename = str(tmpdir.mkdir("tmpdir").join("nblock.inp"))
+
+    nodes = hex_archive.nodes
+    angles = hex_archive.node_angles
+    with pytest.raises(ValueError, match="sig_digits"):
+        archive.write_nblock(
+            nblock_filename, hex_archive.nnum, nodes, angles, sig_digits=-1
+        )
+
+    archive.write_nblock(
+        nblock_filename, hex_archive.nnum, nodes, angles, sig_digits=sig_digits
+    )  # more than 18 fails
+    tmp_archive = Archive(nblock_filename)
+    assert np.allclose(hex_archive.nnum, tmp_archive.nnum)
+    assert np.allclose(hex_archive.nodes, tmp_archive.nodes)
+    assert np.allclose(hex_archive.node_angles, tmp_archive.node_angles)
+
+
 def test_cython_write_eblock(hex_archive, tmpdir):
     filename = str(tmpdir.mkdir("tmpdir").join("eblock.inp"))
 

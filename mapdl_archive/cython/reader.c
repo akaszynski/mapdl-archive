@@ -19,7 +19,7 @@ static const double DIV_OF_TEN[] = {
     1.0e-0,  1.0e-1,  1.0e-2,  1.0e-3,  1.0e-4,  1.0e-5,  1.0e-6,
     1.0e-7,  1.0e-8,  1.0e-9,  1.0e-10, 1.0e-11, 1.0e-12, 1.0e-13,
     1.0e-14, 1.0e-15, 1.0e-16, 1.0e-17, 1.0e-18, 1.0e-19, 1.0e-20,
-    1.0e-21, 1.0e-22, 1.0e-23, 1.0e-24,
+    1.0e-21, 1.0e-22, 1.0e-23, 1.0e-24, 1.0e-25, 1.0e-26, 1.0e-27,
 };
 
 static inline double power_of_ten(int exponent) {
@@ -112,7 +112,7 @@ static inline int ans_strtod(char *raw, int fltsz, double *arr) {
 
   // Compute the floating-point value
   double val;
-  if (decimal_digits < 24) {
+  if (decimal_digits < 27) {
     val = (double)val_int * DIV_OF_TEN[decimal_digits];
   } else {
     val = (double)val_int * power_of_ten(10);
@@ -137,21 +137,10 @@ static inline int ans_strtod(char *raw, int fltsz, double *arr) {
       }
       evalue = evalue * 10 + (*raw++ - '0');
     }
-    // printf("%d\n", evalue);
-    // val *= pow10(evalue);
     if (esign == 1) {
       val *= power_of_ten(evalue);
-
-      // while (evalue > 0) {  // raises value to the power of the exponent
-      //   val *= 10;
-      //   evalue--;
-      // }
     } else {
       val /= power_of_ten(evalue);
-      // while (evalue > 0) {
-      //   val *= 0.1;
-      //   evalue--;
-      // }
     }
   }
 
@@ -161,7 +150,6 @@ static inline int ans_strtod(char *raw, int fltsz, double *arr) {
   } else {
     *arr = val;
   }
-  /* printf(", %f", val); */
 
   return 0; // Return 0 when a number has a been read
 }
@@ -319,8 +307,8 @@ int read_nblock_from_nwrite(const char *filename, int *nnum, double *nodes,
   }
 
   // set to start of the NBLOCK
-  const int bufsize = 74; // One int, 3 floats, two end char max (/r/n)
-  char buffer[74];
+  const int bufsize = 150;
+  char buffer[150];
   int i;
 
   for (i = 0; i < nnodes; i++) {
