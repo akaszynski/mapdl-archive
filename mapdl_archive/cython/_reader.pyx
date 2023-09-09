@@ -157,7 +157,6 @@ def read(filename, read_parameters=False, debug=False, read_eblock=True):
 
                 # Skip Format1 (2i9,19a9)
                 fgets(line, sizeof(line), cfile)
-                print(line)
 
                 for item in range(n_items):
                     fgets(line, sizeof(line), cfile)
