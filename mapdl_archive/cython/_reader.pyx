@@ -149,6 +149,24 @@ def read(filename, read_parameters=False, debug=False, read_eblock=True):
                         print('Invalid "ET" command %s' % line.decode())
                     continue
 
+            # read in new ETBLOCK (replacement for ET)
+            elif b'ETBLOCK' in line or b'etblock' in line:
+                # read the number of items in the block
+                set_dat = [safe_int(value) for value in line.split(b',')[1:]]
+                n_items = set_dat[0]
+
+                # Skip Format1 (2i9,19a9)
+                fgets(line, sizeof(line), cfile)
+                print(line)
+
+                for item in range(n_items):
+                    fgets(line, sizeof(line), cfile)
+
+                    # Only read in the first two items (ELEM index and TYPE)
+                    # NOTE: Remaining contents of the block are unknown
+                    et_val = [safe_int(value) for value in line.split()[:2]]
+                    elem_type.append(et_val)
+
             elif b'EBLOCK,' == line[:7] or b'eblock,' == line[:7] and read_eblock:
                 if eblock_read:
                     # Sometimes, DAT files contain two EBLOCKs.  Read

@@ -537,6 +537,14 @@ def test_rlblock_prior_to_nblock():
     assert archive.n_elem == 36
 
 
+def test_etblock():
+    # test edge case where RLBLOCK is immediately prior to the NBLOCK
+    filename = os.path.join(TESTFILES_PATH, "etblock.cdb")
+    archive = Archive(filename)
+    assert archive.n_node == 4
+    assert archive.n_elem == 1
+
+
 class TestPathlibFilename:
     def test_pathlib_filename_property(self, pathlib_archive):
         assert isinstance(pathlib_archive.pathlib_filename, pathlib.Path)
