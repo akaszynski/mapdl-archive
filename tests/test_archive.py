@@ -131,6 +131,9 @@ def test_archive_init(hex_archive):
     assert isinstance(hex_archive._raw, dict)
     assert isinstance(hex_archive.grid, pv.UnstructuredGrid)
 
+    assert hex_archive._nblock_start > 0
+    assert hex_archive._nblock_end > hex_archive._nblock_start
+
 
 def test_parse_vtk(hex_archive):
     grid = hex_archive.grid
@@ -543,6 +546,31 @@ def test_etblock():
     archive = Archive(filename)
     assert archive.n_node == 4
     assert archive.n_elem == 1
+
+
+def test_overwrite_nblock(tmpdir, hex_archive):
+    # ensure that we capture the entire NBLOCK
+    with open(hex_archive._filename, "rb") as fid:
+        fid.seek(hex_archive._nblock_start)
+        nblock_txt = fid.read(
+            hex_archive._nblock_end - hex_archive._nblock_start
+        ).decode()
+
+    assert nblock_txt.startswith("NBLOCK")
+    assert nblock_txt.splitlines()[-1].endswith("-1,")
+
+    filename = str(tmpdir.mkdir("tmpdir").join("tmp.cdb"))
+    nodes = np.random.random(hex_archive.nodes.shape)
+    hex_archive.overwrite_nblock(
+        filename,
+        hex_archive.nnum,
+        nodes,
+    )
+
+    archive_new = Archive(filename)
+    assert np.allclose(nodes, archive_new.grid.points)
+    assert np.allclose(hex_archive.nnum, archive_new.nnum)
+    assert np.allclose(hex_archive.grid.cells.size, archive_new.grid.cells.size)
 
 
 class TestPathlibFilename:

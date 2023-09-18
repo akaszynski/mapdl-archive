@@ -3,6 +3,7 @@ import io
 import logging
 import os
 import pathlib
+import shutil
 
 import numpy as np
 from pyvista import CellType, UnstructuredGrid
@@ -225,6 +226,61 @@ class Archive(Mesh):
         kwargs.setdefault("color", "w")
         kwargs.setdefault("show_edges", True)
         return self.grid.plot(*args, **kwargs)
+
+    @property
+    def _nblock_start(self) -> int:
+        """Return the start of the node block in the original file."""
+        return self._raw["nblock_start"]
+
+    @property
+    def _nblock_end(self) -> int:
+        """Return the end of the node block in the original file."""
+        return self._raw["nblock_end"]
+
+    def overwrite_nblock(self, filename, node_id, pos, angles=None, sig_digits=13):
+        """Write out an archive file to disk while replacing its NBLOCK.
+
+        Parameters
+        ----------
+        filename : str or file handle
+            Filename to write node block to.
+        node_id : numpy.ndarray
+            ANSYS node numbers.
+        pos : np.ndarray
+            Array of node coordinates.
+        angles : numpy.ndarray, optional
+            Writes the node angles for each node when included.
+        sig_digits : int, default: 13
+            Number of significant digits to use when writing the nodes. Must be
+            greater than 0.
+
+        Examples
+        --------
+        Write a new archive file that overwrites the NBLOCK with random nodes
+        and reuse the existing node numbers.
+
+        >>> import numpy as np
+        >>> import mapdl_archive
+        >>> archive = mapdl_archive.Archive(examples.hexarchivefile)
+        >>> new_nodes = np.random.random(archive.nodes.shape)
+        >>> archive.overwrite_nblock("new_archive.cdb", archive.nnum, new_nodes)
+
+        """
+        with open(self._filename, "rb") as src_file, open(filename, "wb") as dest_file:
+            # Copy the beginning of the file up to _nblock_start
+            dest_file.write(src_file.read(self._nblock_start))
+
+        # Write new nblock
+        write_nblock(
+            filename, node_id, pos, angles=angles, mode="a", sig_digits=sig_digits
+        )
+
+        # Copy the rest of the original file
+        with open(self._filename, "rb") as src_file, open(filename, "ab") as dest_file:
+            src_file.seek(self._nblock_end)
+            dest_file.seek(0, io.SEEK_END)
+
+            shutil.copyfileobj(src_file, dest_file)
 
 
 def save_as_archive(
