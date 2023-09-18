@@ -94,7 +94,7 @@ def read(filename, read_parameters=False, debug=False, read_eblock=True):
     cdef int [::1] nnum = np.empty(0, ctypes.c_int)
     cdef double [:, ::1] nodes = np.empty((0, 0))
     cdef int d_size[3]
-    cdef int f_size, nfields
+    cdef int f_size, nfields, nblock_start, nblock_end, _start
 
     # EBLOCK
     cdef int nelem = 0
@@ -148,6 +148,23 @@ def read(filename, read_parameters=False, debug=False, read_eblock=True):
                     if debug:
                         print('Invalid "ET" command %s' % line.decode())
                     continue
+
+            # read in new ETBLOCK (replacement for ET)
+            elif b'ETBLOCK' in line or b'etblock' in line:
+                # read the number of items in the block
+                set_dat = [safe_int(value) for value in line.split(b',')[1:]]
+                n_items = set_dat[0]
+
+                # Skip Format1 (2i9,19a9)
+                fgets(line, sizeof(line), cfile)
+
+                for item in range(n_items):
+                    fgets(line, sizeof(line), cfile)
+
+                    # Only read in the first two items (ELEM index and TYPE)
+                    # NOTE: Remaining contents of the block are unknown
+                    et_val = [safe_int(value) for value in line.split()[:2]]
+                    elem_type.append(et_val)
 
             elif b'EBLOCK,' == line[:7] or b'eblock,' == line[:7] and read_eblock:
                 if eblock_read:
@@ -297,6 +314,7 @@ def read(filename, read_parameters=False, debug=False, read_eblock=True):
 
         elif first_char == 'N' or first_char == 'n':
             ungetc(first_char, cfile);  # Put the character back into the stream
+            _start = ftell(cfile)  # used for NBLOCK
             fgets(line, sizeof(line), cfile)
 
             if debug:
@@ -310,6 +328,9 @@ def read(filename, read_parameters=False, debug=False, read_eblock=True):
                     continue
                 if debug:
                     print('reading NBLOCK due to ', line.decode())
+
+                # Before reading NBLOCK, save where the nblock started
+                nblock_start = _start
 
                 # Get size of NBLOCK
                 nnodes = int(line[line.rfind(b',') + 1:])
@@ -325,6 +346,10 @@ def read(filename, read_parameters=False, debug=False, read_eblock=True):
 
                 nnodes_read = read_nblock_cfile(cfile, &nnum[0], &nodes[0, 0], nnodes, d_size, f_size)
                 nodes_read = True
+
+                # read final line
+                fgets(line, sizeof(line), cfile)
+                nblock_end = ftell(cfile)
 
                 if nnodes_read != nnodes:
                     nnodes = nnodes_read
@@ -448,16 +473,18 @@ def read(filename, read_parameters=False, debug=False, read_eblock=True):
 
     return {
         'rnum': np.asarray(rnum),
-            'rdat': rdat,
-            'ekey': np.asarray(elem_type, ctypes.c_int),
-            'nnum': np.asarray(nnum),
-            'nodes': np.asarray(nodes),
-            'elem': np.array(elem[:elem_sz]),
-            'elem_off': np.array(elem_off),
-            'node_comps': node_comps,
-            'elem_comps': elem_comps,
-            'keyopt': keyopt,
-            'parameters': parameters
+        'rdat': rdat,
+        'ekey': np.asarray(elem_type, ctypes.c_int),
+        'nnum': np.asarray(nnum),
+        'nodes': np.asarray(nodes),
+        'elem': np.array(elem[:elem_sz]),
+        'elem_off': np.array(elem_off),
+        'node_comps': node_comps,
+        'elem_comps': elem_comps,
+        'keyopt': keyopt,
+        'parameters': parameters,
+        'nblock_start': nblock_start,
+        'nblock_end': nblock_end,
     }
 
 
