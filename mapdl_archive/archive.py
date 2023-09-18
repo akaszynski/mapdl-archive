@@ -254,6 +254,17 @@ class Archive(Mesh):
             Number of significant digits to use when writing the nodes. Must be
             greater than 0.
 
+        Examples
+        --------
+        Write a new archive file that overwrites the NBLOCK with random nodes
+        and reuse the existing node numbers.
+
+        >>> import numpy as np
+        >>> import mapdl_archive
+        >>> archive = mapdl_archive.Archive(examples.hexarchivefile)
+        >>> new_nodes = np.random.random(archive.nodes.shape)
+        >>> archive.overwrite_nblock("new_archive.cdb", archive.nnum, new_nodes)
+
         """
         with open(self._filename, "rb") as src_file, open(filename, "wb") as dest_file:
             # Copy the beginning of the file up to _nblock_start
