@@ -223,7 +223,10 @@ PLANE292
 PLANE293
 USER300
 """
+from typing import List
+
 import numpy as np
+import numpy.typing as npt
 
 # element type to VTK conversion function call map
 # 0: skip
@@ -234,7 +237,7 @@ import numpy as np
 # 5: Tetrahedral
 # 6: Line (always linear)
 
-_etype_map = [
+_etype_map: List[int] = [
     0,
     2,  # LINK1
     3,  # PLANE2
@@ -538,10 +541,10 @@ _etype_map = [
     0,  # USER300
 ]
 
-ETYPE_MAP = np.array(_etype_map, dtype=np.int32)
+ETYPE_MAP: npt.NDArray[np.int32] = np.array(_etype_map, dtype=np.int32)
 
 # this is a mask of solid elements
-SOLID_ELEMENTS = np.array(
+SOLID_ELEMENTS: npt.NDArray[np.bool_] = np.array(
     [
         False,  # **dummy value**
         False,  # LINK1
