@@ -1,7 +1,7 @@
 [build-system]
 build-backend = "setuptools.build_meta"
 requires = [
-    "cython==3.0.0",
+    "cython==3.0.5",
     "oldest-supported-numpy",
     "setuptools>=45.0",
     "wheel>=0.37.0",
@@ -18,7 +18,7 @@ filterwarnings = [
 ]
 
 [tool.cibuildwheel]
-archs = ["auto64"]  # 64-bit only
+archs = ["cp36-* cp37-* auto64"]  # 64-bit only for Python 3.8 - 3.12
 skip = "pp* *musllinux*"  # disable PyPy and musl-based wheels
 test-requires = "matplotlib pytest scipy"
 test-command = "pytest {project}/tests -vx"
@@ -27,3 +27,8 @@ test-command = "pytest {project}/tests -vx"
 # https://cibuildwheel.readthedocs.io/en/stable/faq/#apple-silicon
 archs = ["x86_64", "universal2"]
 test-skip = ["*_arm64", "*_universal2:arm64"]
+
+[tool.codespell]
+skip = '*.pyc,*.txt,*.gif,*.png,*.jpg,*.js,*.html,*.doctree,*.ttf,*.woff,*.woff2,*.eot,*.mp4,*.inv,*.pickle,*.ipynb,flycheck*,./.git/*,./.hypothesis/*,*.yml,./doc/build/*,./doc/images/*,./dist/*,*~,.hypothesis*,./doc/source/examples/*,*cover,*.dat,*.mac,build,./docker/mapdl/v*,./factory/*,*.mypy_cache/*,./docker/mapdl/*,./_unused/*,*.cdb'
+ignore-words = "doc/ignore-words.txt"
+quiet-level = 3

@@ -1,6 +1,7 @@
 """Test ``mapdl_archive/archive.py``."""
 import os
 import pathlib
+import sys
 
 import numpy as np
 import pytest
@@ -12,8 +13,10 @@ from pyvista.plotting import system_supports_plotting
 import mapdl_archive
 from mapdl_archive import Archive, _archive, archive, examples
 
+# Windows issues Python 3.12
+WIN_PY312 = sys.version_info.minor == 12 and os.name == "nt"
 skip_plotting = pytest.mark.skipif(
-    not system_supports_plotting(), reason="Requires active X Server"
+    WIN_PY312 or not system_supports_plotting(), reason="Requires active X Server"
 )
 
 LINEAR_CELL_TYPES = [
