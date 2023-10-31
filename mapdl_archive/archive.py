@@ -4,7 +4,7 @@ import logging
 import os
 import pathlib
 import shutil
-from typing import Optional, Sequence, Union, cast
+from typing import Dict, List, Optional, Sequence, Union, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -113,7 +113,7 @@ class Archive(Mesh):
         read_parameters: bool = False,
         parse_vtk: bool = True,
         force_linear: bool = False,
-        allowable_types: Optional[list[Union[str, int]]] = None,
+        allowable_types: Optional[List[Union[str, int]]] = None,
         null_unallowed: bool = False,
         verbose: bool = False,
         name: str = "",
@@ -160,7 +160,7 @@ class Archive(Mesh):
         return self._filename
 
     @property
-    def parameters(self) -> dict[str, np.ndarray]:
+    def parameters(self) -> Dict[str, np.ndarray]:
         """Return the parameters stored in the archive file.
 
         Examples
