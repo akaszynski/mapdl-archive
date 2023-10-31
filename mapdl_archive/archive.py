@@ -4,13 +4,19 @@ import logging
 import os
 import pathlib
 import shutil
-from typing import Optional, Union
+from typing import Optional, Sequence, Union, cast
 
 import numpy as np
+import numpy.typing as npt
 from pyvista import CellType, UnstructuredGrid
 
 from mapdl_archive import _archive, _reader
 from mapdl_archive.mesh import Mesh
+
+# types
+NPArray_FLOAT32_64 = npt.NDArray[Union[np.float32, np.float64]]
+NPArray_FLOAT32 = npt.NDArray[np.float32]
+NPArray_FLOAT64 = npt.NDArray[np.float64]
 
 VTK_VOXEL = 11
 
@@ -301,7 +307,7 @@ def save_as_archive(
     include_components: bool = True,
     exclude_missing: bool = False,
     node_sig_digits: int = 13,
-):
+) -> None:
     """Write FEM as an ANSYS APDL archive file.
 
     This function supports the following element types:
@@ -689,12 +695,19 @@ def save_as_archive(
                     write_cmblock(fid, items, node_key, "ELEM")
 
 
-def write_nblock(filename, node_id, pos, angles=None, mode="w", sig_digits=13):
+def write_nblock(
+    filename: str,
+    node_id: npt.NDArray[np.int_],
+    pos: NPArray_FLOAT32_64,
+    angles: Optional[NPArray_FLOAT32_64] = None,
+    mode: str = "w",
+    sig_digits: int = 13,
+) -> None:
     """Write nodes and node angles to file.
 
     Parameters
     ----------
-    filename : str or file handle
+    filename : str
         Filename to write node block to.
     node_id : numpy.ndarray
         ANSYS node numbers.
@@ -731,14 +744,14 @@ def write_nblock(filename, node_id, pos, angles=None, mode="w", sig_digits=13):
                 f"Invalid angles array shape {angles.shape}. Should be shaped `(n, 3)`."
             )
 
-    node_id = node_id.astype(np.int32, copy=False)
+    node_id_32: npt.NDArray[np.int32] = node_id.astype(np.int32, copy=False)
 
     # node array must be sorted
     # note, this is sort check is most suited for pre-sorted arrays
     # see https://stackoverflow.com/questions/3755136/
-    if not np.all(node_id[:-1] <= node_id[1:]):
-        sidx = np.argsort(node_id)
-        node_id = node_id[sidx]
+    if not np.all(node_id_32[:-1] <= node_id_32[1:]):
+        sidx = np.argsort(node_id_32)
+        node_id_32 = node_id_32[sidx]
         pos = pos[sidx]
 
     if angles is not None:
@@ -746,15 +759,42 @@ def write_nblock(filename, node_id, pos, angles=None, mode="w", sig_digits=13):
     else:
         angles = np.empty((0, 0), dtype=pos.dtype)
 
-    if pos.dtype == np.float32:
-        write_func = _archive.py_write_nblock_float
+    if pos.dtype == np.float32 and angles.dtype == np.float32:
+        _archive.py_write_nblock_float(
+            filename,
+            node_id_32,
+            node_id_32[-1],
+            cast(NPArray_FLOAT32, pos),
+            cast(NPArray_FLOAT32, angles),
+            mode,
+            sig_digits,
+        )
+    elif pos.dtype == np.float64 and angles.dtype == np.float64:
+        _archive.py_write_nblock(
+            filename,
+            node_id_32,
+            node_id_32[-1],
+            cast(NPArray_FLOAT64, pos),
+            cast(NPArray_FLOAT64, angles),
+            mode,
+            sig_digits,
+        )
     else:
-        write_func = _archive.py_write_nblock
+        raise ValueError(
+            "Position and angle arrays must both be either float32 or float64"
+        )
 
-    write_func(filename, node_id, node_id[-1], pos, angles, mode, sig_digits)
+    return None
 
 
-def write_cmblock(filename, items, comp_name, comp_type, digit_width=10, mode="w"):
+def write_cmblock(
+    filename: Union[str, io.TextIOBase],
+    items: Sequence[int],
+    comp_name: str,
+    comp_type: str,
+    digit_width: int = 10,
+    mode: str = "w",
+) -> None:
     """Write a component block (CMBLOCK) to a file.
 
     Parameters
@@ -794,19 +834,23 @@ def write_cmblock(filename, items, comp_name, comp_type, digit_width=10, mode="w
     opened_file = False
     if isinstance(filename, io.TextIOBase):
         fid = filename
-    else:
-        fid = open(filename, mode)
+    elif isinstance(filename, str):
+        fid = open(filename, mode)  # type: ignore
         opened_file = True
+    else:
+        raise TypeError(
+            "Invalid type {type(filename)} for `filename`. Should be file handle or string."
+        )
 
     if not isinstance(items, np.ndarray):
-        items = np.array(items, dtype=np.int32)
-    elif items.dtype != np.int32:
-        items = items.astype(np.int32)
+        items_arr: npt.NDArray[np.int32] = np.array(items, dtype=np.int32)
+    else:
+        items_arr = items.astype(np.int32, copy=False)
 
     # All this python writing could be a bottleneck for non-contiguous CMBLOCKs.
     # consider cythonizing this in the future
-    cmblock_items = _archive.cmblock_items_from_array(items)
-    nitems = len(cmblock_items)
+    cmblock_items: npt.NDArray[np.int32] = _archive.cmblock_items_from_array(items_arr)
+    nitems: int = len(cmblock_items)
     print(f"CMBLOCK,{comp_name},{comp_type},{nitems:8d}", file=fid)
     print(f"(8i{digit_width})", file=fid)
     digit_formatter = f"%{digit_width}d"
@@ -829,17 +873,17 @@ def write_cmblock(filename, items, comp_name, comp_type, digit_width=10, mode="w
 
 
 def _write_eblock(
-    filename,
-    elem_id,
-    etype,
-    mtype,
-    rcon,
-    elem_nnodes,
-    cells,
-    offset,
-    celltypes,
-    typenum,
-    nodenum,
+    filename: str,
+    elem_id: np.ndarray,
+    etype: np.ndarray,
+    mtype: np.ndarray,
+    rcon: np.ndarray,
+    elem_nnodes: np.ndarray,
+    cells: np.ndarray,
+    offset: np.ndarray,
+    celltypes: np.ndarray,
+    typenum: np.ndarray,
+    nodenum: np.ndarray,
     mode="a",
 ):
     """Write EBLOCK to disk."""
