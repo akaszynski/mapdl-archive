@@ -4,14 +4,15 @@ import logging
 import os
 import pathlib
 import shutil
+from typing import Optional, Union
 
 import numpy as np
 from pyvista import CellType, UnstructuredGrid
 
-VTK_VOXEL = 11
-
 from mapdl_archive import _archive, _reader
 from mapdl_archive.mesh import Mesh
+
+VTK_VOXEL = 11
 
 log = logging.getLogger(__name__)
 log.setLevel("CRITICAL")
@@ -102,20 +103,20 @@ class Archive(Mesh):
 
     def __init__(
         self,
-        filename,
-        read_parameters=False,
-        parse_vtk=True,
-        force_linear=False,
-        allowable_types=None,
-        null_unallowed=False,
-        verbose=False,
-        name="",
-        read_eblock=True,
+        filename: Union[str, pathlib.Path],
+        read_parameters: bool = False,
+        parse_vtk: bool = True,
+        force_linear: bool = False,
+        allowable_types: Optional[list[Union[str, int]]] = None,
+        null_unallowed: bool = False,
+        verbose: bool = False,
+        name: str = "",
+        read_eblock: bool = True,
     ):
         """Initialize an instance of the archive class."""
-        self._read_parameters = read_parameters
-        self._filename = pathlib.Path(filename)
-        self._name = name
+        self._read_parameters: bool = read_parameters
+        self._filename: pathlib.Path = pathlib.Path(filename)
+        self._name: str = name
         self._raw = _reader.read(
             self.filename,
             read_parameters=read_parameters,
@@ -128,16 +129,16 @@ class Archive(Mesh):
             self._raw["elem"],
             self._raw["elem_off"],
             self._raw["ekey"],
+            self._raw["rnum"],
             node_comps=self._raw["node_comps"],
             elem_comps=self._raw["elem_comps"],
             rdat=self._raw["rdat"],
-            rnum=self._raw["rnum"],
             keyopt=self._raw["keyopt"],
         )
 
-        self._allowable_types = allowable_types
-        self._force_linear = force_linear
-        self._null_unallowed = null_unallowed
+        self._allowable_types: Optional[list[Union[str, int]]] = allowable_types
+        self._force_linear: bool = force_linear
+        self._null_unallowed: bool = null_unallowed
 
         if parse_vtk:
             self._grid = self._parse_vtk(allowable_types, force_linear, null_unallowed)
@@ -153,7 +154,7 @@ class Archive(Mesh):
         return self._filename
 
     @property
-    def parameters(self):
+    def parameters(self) -> dict[str, np.ndarray]:
         """Return the parameters stored in the archive file.
 
         Examples
@@ -174,10 +175,10 @@ class Archive(Mesh):
             )
         return self._raw["parameters"]
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         """Return the representation of the archive."""
         if self._name:
-            txt = f"MAPDL {self._name}\n"
+            txt: str = f"MAPDL {self._name}\n"
         else:
             basename = os.path.basename(self._filename)
             txt = f"ANSYS Archive File {basename}\n"
@@ -190,7 +191,7 @@ class Archive(Mesh):
         return txt
 
     @property
-    def grid(self):
+    def grid(self) -> UnstructuredGrid:
         """Return a ``pyvista.UnstructuredGrid`` of the archive file.
 
         Examples
@@ -284,22 +285,22 @@ class Archive(Mesh):
 
 
 def save_as_archive(
-    filename,
-    grid,
-    mtype_start=1,
-    etype_start=1,
-    real_constant_start=1,
-    mode="w",
-    enum_start=1,
-    nnum_start=1,
-    include_etype_header=True,
-    reset_etype=False,
-    allow_missing=True,
-    include_surface_elements=True,
-    include_solid_elements=True,
-    include_components=True,
-    exclude_missing=False,
-    node_sig_digits=13,
+    filename: Union[pathlib.Path, str],
+    grid: UnstructuredGrid,
+    mtype_start: int = 1,
+    etype_start: int = 1,
+    real_constant_start: int = 1,
+    mode: str = "w",
+    enum_start: int = 1,
+    nnum_start: int = 1,
+    include_etype_header: bool = True,
+    reset_etype: bool = False,
+    allow_missing: bool = True,
+    include_surface_elements: bool = True,
+    include_solid_elements: bool = True,
+    include_components: bool = True,
+    exclude_missing: bool = False,
+    node_sig_digits: int = 13,
 ):
     """Write FEM as an ANSYS APDL archive file.
 
