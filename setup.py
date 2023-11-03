@@ -77,11 +77,12 @@ setup(
     python_requires=">=3.8",
     keywords="vtk MAPDL ANSYS cdb",
     package_data={
+        "mapdl_archive": ["py.typed"],
         "mapdl_archive.examples": [
             "TetBeam.cdb",
             "HexBeam.cdb",
             "sector.cdb",
-        ]
+        ],
     },
     install_requires=["pyvista>=0.41.1"],
 )
