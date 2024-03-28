@@ -1,4 +1,5 @@
 """Test ``mapdl_archive/archive.py``."""
+
 import os
 import pathlib
 import sys
