@@ -1,4 +1,5 @@
 """Installation file for mapdl_archive."""
+
 from io import open as io_open
 import os
 
