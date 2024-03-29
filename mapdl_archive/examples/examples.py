@@ -1,4 +1,5 @@
 """Mapdl-archive example files."""
+
 import os
 
 # get location of this folder and the example files

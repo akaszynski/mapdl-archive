@@ -1,4 +1,5 @@
 """Module to read MAPDL ASCII block formatted CDB files."""
+
 import io
 import logging
 import os
@@ -37,7 +38,8 @@ class Archive(Mesh):
     Parameters
     ----------
     filename : string, pathlib.Path
-        Filename of block formatted cdb file
+        Supports blocked MAPDL archive .cdb files or .npz written from this
+        class using :class:`Archive.save_as_numpy`.
 
     read_parameters : bool, default: False
         Optionally read parameters from the archive file.
@@ -123,12 +125,31 @@ class Archive(Mesh):
         self._read_parameters: bool = read_parameters
         self._filename: pathlib.Path = pathlib.Path(filename)
         self._name: str = name
-        self._raw = _reader.read(
-            self.filename,
-            read_parameters=read_parameters,
-            debug=verbose,
-            read_eblock=read_eblock,
-        )
+        if self.filename.endswith("npz"):
+            npz_file = np.load(self.filename, allow_pickle=True)
+
+            self._raw: _reader.ReadReturnDict = {
+                "rnum": npz_file["rnum"],
+                "rdat": npz_file["rdat"].tolist(),
+                "ekey": npz_file["ekey"],
+                "nnum": npz_file["nnum"],
+                "nodes": npz_file["nodes"],
+                "elem": npz_file["elem"],
+                "elem_off": npz_file["elem_off"],
+                "node_comps": npz_file["node_comps"].item(),
+                "elem_comps": npz_file["elem_comps"].item(),
+                "keyopt": npz_file["keyopt"].item(),
+                "parameters": npz_file["parameters"].item(),
+                "nblock_start": npz_file["nblock_start"],
+                "nblock_end": npz_file["nblock_end"],
+            }
+        else:
+            self._raw = _reader.read(
+                self.filename,
+                read_parameters=read_parameters,
+                debug=verbose,
+                read_eblock=read_eblock,
+            )
         super().__init__(
             self._raw["nnum"],
             self._raw["nodes"],
@@ -288,6 +309,18 @@ class Archive(Mesh):
             dest_file.seek(0, io.SEEK_END)
 
             shutil.copyfileobj(src_file, dest_file)
+
+    def save_as_numpy(self, filename: str):
+        """Save this archive as a numpy "npz" file.
+
+        This reduces the file size by around 50% compared with the Ansys
+        blocked file format.
+
+        """
+        if not filename.endswith("npz"):
+            raise ValueError("Filename should end with 'npz'")
+
+        np.savez(filename, **self._raw)  # type: ignore
 
 
 def save_as_archive(

@@ -1,4 +1,5 @@
 """Test ``mapdl_archive/archive.py``."""
+
 import os
 import pathlib
 import sys
@@ -36,6 +37,15 @@ TEST_PATH = os.path.dirname(os.path.abspath(__file__))
 TESTFILES_PATH = os.path.join(TEST_PATH, "test_data")
 TESTFILES_PATH_PATHLIB = pathlib.Path(TESTFILES_PATH)
 DAT_FILE = os.path.join(TESTFILES_PATH, "Panel_Transient.dat")
+
+
+def compare_dicts_with_arrays(dict1, dict2):
+    if dict1.keys() != dict2.keys():
+        return False
+    for key in dict1:
+        if not np.array_equal(dict1[key], dict2[key]):
+            return False
+    return True
 
 
 def proto_cmblock(array):
@@ -592,3 +602,21 @@ class TestPathlibFilename:
     def test_filename_setter_string(self, pathlib_archive):
         with pytest.raises(AttributeError):
             pathlib_archive.filename = "dummy2"
+
+
+def test_save_as_numpy(tmpdir, hex_archive):
+    """Test saving to and loading from a npz file."""
+    path = str(tmpdir.join("data.npz"))
+    hex_archive.save_as_numpy(path)
+    hex_in = Archive(path)
+
+    assert hex_archive._raw.keys() == hex_in._raw.keys()
+
+    for key, value in hex_archive._raw.items():
+        if isinstance(value, np.ndarray):
+            assert np.allclose(value, hex_in._raw[key])
+        else:
+            if isinstance(value, dict):
+                compare_dicts_with_arrays(value, hex_in._raw[key])
+            else:
+                assert value == hex_in._raw[key]

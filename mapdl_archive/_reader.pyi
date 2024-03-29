@@ -25,7 +25,7 @@ def read(
     read_eblock: bool = True,
 ) -> ReadReturnDict: ...
 def node_block_format(
-    string: Union[bytes, str]
+    string: Union[bytes, str],
 ) -> Tuple[npt.NDArray[np.int32], int, int, int]: ...
 def ans_vtk_convert(
     elem: npt.NDArray[np.int32],
