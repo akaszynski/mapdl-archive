@@ -37,7 +37,7 @@ repos:
   - id: check-merge-conflict
   - id: debug-statements
   - id: trailing-whitespace
-    exclude: '.*\.(cdb|rst|dat)$'
+    exclude: .*\.(cdb|rst|dat)$
 
 - repo: https://github.com/macisamuele/language-formatters-pre-commit-hooks
   rev: v2.14.0

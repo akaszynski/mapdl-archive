@@ -7,18 +7,18 @@ authors = [
   {name = "Alex Kaszynski", email = "akascap@gmail.com"}
 ]
 classifiers = [
-        "Development Status :: 4 - Beta",
-        "Intended Audience :: Science/Research",
-        "Topic :: Scientific/Engineering :: Information Analysis",
-        "License :: OSI Approved :: MIT License",
-        "Operating System :: Microsoft :: Windows",
-        "Operating System :: POSIX",
-        "Operating System :: MacOS",
-        "Programming Language :: Python :: 3.8",
-        "Programming Language :: Python :: 3.9",
-        "Programming Language :: Python :: 3.10",
-        "Programming Language :: Python :: 3.11",
-        "Programming Language :: Python :: 3.12",
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Science/Research",
+  "Topic :: Scientific/Engineering :: Information Analysis",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: Microsoft :: Windows",
+  "Operating System :: POSIX",
+  "Operating System :: MacOS",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12"
 ]
 dependencies = [
   "pyvista>=0.41.1"
@@ -45,8 +45,18 @@ archs = ["native"]
 MACOSX_DEPLOYMENT_TARGET = "10.14"  # Needed for full C++17 support on MacOS
 
 [tool.codespell]
+ignore-words-list = "POIN,parm"
 quiet-level = 3
-skip = '*.cxx,*.h,*.gif,*.png,*.jpg,*.js,*.html,*.doctree,*.ttf,*.woff,*.woff2,*.eot,*.mp4,*.inv,*.pickle,*.ipynb,flycheck*,./.git/*,./.hypothesis/*,*.yml,./doc/build/*,./doc/images/*,./dist/*,*~,.hypothesis*,*.cpp,*.c'
+skip = '*.cxx,*.h,*.gif,*.png,*.jpg,*.js,*.html,*.doctree,*.ttf,*.woff,*.woff2,*.eot,*.mp4,*.inv,*.pickle,*.ipynb,flycheck*,./.git/*,./.hypothesis/*,*.yml,./doc/build/*,./doc/images/*,./dist/*,*~,.hypothesis*,*.cpp,*.c,*.dat,*.cdb'
+
+[tool.mypy]
+plugins = ["numpy.typing.mypy_plugin"]
+strict = true
+
+[tool.pylsp-mypy]
+enabled = true
+live_mode = true
+strict = true
 
 [tool.pytest.ini_options]
 testpaths = 'tests'
@@ -62,13 +72,3 @@ extend-select = ["I"]
 build-dir = "build/{wheel_tag}"
 minimum-version = "0.4"
 sdist.exclude = [".github", "*.png", "tests", ".mypy_cache", ".pre-commit-config.yaml", "*_cache", "CONTRIBUTING.md", ".gitignore"]
-
-
-[tool.mypy]
-plugins = ["numpy.typing.mypy_plugin"]
-strict = true
-
-[tool.pylsp-mypy]
-enabled = true
-live_mode = true
-strict = true

@@ -1,8 +1,8 @@
 """Contains the Mesh class used by Archive."""
 
+import warnings
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union, cast
-import warnings
 
 import numpy as np
 import numpy.typing as npt
