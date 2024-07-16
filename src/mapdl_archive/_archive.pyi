@@ -1,25 +1,16 @@
 import numpy as np
 import numpy.typing as npt
 
-def py_write_nblock(
+def write_nblock(
     filename: str,
-    node_id: npt.NDArray[np.int32],
     max_node_id: int,
-    pos: npt.NDArray[np.float64],
+    node_id: npt.NDArray[np.int32],
+    nodes: npt.NDArray[np.float64],
     angles: npt.NDArray[np.float64],
-    mode: str = "w",
-    sig_digits: int = 13,
+    sig_digits: int,
+    mode: str,
 ) -> None: ...
-def py_write_nblock_float(
-    filename: str,
-    node_id: npt.NDArray[np.int32],
-    max_node_id: int,
-    pos: npt.NDArray[np.float32],
-    angles: npt.NDArray[np.float32],
-    mode: str = "w",
-    sig_digits: int = 13,
-) -> None: ...
-def py_write_eblock(
+def write_eblock(
     filename: str,
     elem_id: npt.NDArray[np.int32],
     etype: npt.NDArray[np.int32],

@@ -11,7 +11,7 @@ import numpy as np
 import numpy.typing as npt
 from pyvista import CellType, UnstructuredGrid
 
-from mapdl_archive import _archive, _reader
+from mapdl_archive import _archive  # _reader
 from mapdl_archive.mesh import Mesh
 
 # types
@@ -38,8 +38,7 @@ class Archive(Mesh):
     Parameters
     ----------
     filename : string, pathlib.Path
-        Supports blocked MAPDL archive .cdb files or .npz written from this
-        class using :class:`Archive.save_as_numpy`.
+        Filename of block formatted cdb file
 
     read_parameters : bool, default: False
         Optionally read parameters from the archive file.
@@ -125,31 +124,12 @@ class Archive(Mesh):
         self._read_parameters: bool = read_parameters
         self._filename: pathlib.Path = pathlib.Path(filename)
         self._name: str = name
-        if self.filename.endswith("npz"):
-            npz_file = np.load(self.filename, allow_pickle=True)
-
-            self._raw: _reader.ReadReturnDict = {
-                "rnum": npz_file["rnum"],
-                "rdat": npz_file["rdat"].tolist(),
-                "ekey": npz_file["ekey"],
-                "nnum": npz_file["nnum"],
-                "nodes": npz_file["nodes"],
-                "elem": npz_file["elem"],
-                "elem_off": npz_file["elem_off"],
-                "node_comps": npz_file["node_comps"].item(),
-                "elem_comps": npz_file["elem_comps"].item(),
-                "keyopt": npz_file["keyopt"].item(),
-                "parameters": npz_file["parameters"].item(),
-                "nblock_start": npz_file["nblock_start"],
-                "nblock_end": npz_file["nblock_end"],
-            }
-        else:
-            self._raw = _reader.read(
-                self.filename,
-                read_parameters=read_parameters,
-                debug=verbose,
-                read_eblock=read_eblock,
-            )
+        self._raw = _reader.read(
+            self.filename,
+            read_parameters=read_parameters,
+            debug=verbose,
+            read_eblock=read_eblock,
+        )
         super().__init__(
             self._raw["nnum"],
             self._raw["nodes"],
@@ -197,8 +177,7 @@ class Archive(Mesh):
         """
         if not self._read_parameters:
             raise AttributeError(
-                "No parameters read.  Read the archive again "
-                " with ``read_parameters=True``"
+                "No parameters read.  Read the archive again " " with ``read_parameters=True``"
             )
         return self._raw["parameters"]
 
@@ -248,9 +227,7 @@ class Archive(Mesh):
 
         """
         if self._grid is None:  # pragma: no cover
-            raise AttributeError(
-                "Archive must be parsed as a vtk grid.\n Set `parse_vtk=True`"
-            )
+            raise AttributeError("Archive must be parsed as a vtk grid.\n Set `parse_vtk=True`")
         kwargs.setdefault("color", "w")
         kwargs.setdefault("show_edges", True)
         return self.grid.plot(*args, **kwargs)
@@ -299,9 +276,7 @@ class Archive(Mesh):
             dest_file.write(src_file.read(self._nblock_start))
 
         # Write new nblock
-        write_nblock(
-            filename, node_id, pos, angles=angles, mode="a", sig_digits=sig_digits
-        )
+        write_nblock(filename, node_id, pos, angles=angles, mode="a", sig_digits=sig_digits)
 
         # Copy the rest of the original file
         with open(self._filename, "rb") as src_file, open(filename, "ab") as dest_file:
@@ -309,18 +284,6 @@ class Archive(Mesh):
             dest_file.seek(0, io.SEEK_END)
 
             shutil.copyfileobj(src_file, dest_file)
-
-    def save_as_numpy(self, filename: str):
-        """Save this archive as a numpy "npz" file.
-
-        This reduces the file size by around 50% compared with the Ansys
-        blocked file format.
-
-        """
-        if not filename.endswith("npz"):
-            raise ValueError("Filename should end with 'npz'")
-
-        np.savez(filename, **self._raw)  # type: ignore
 
 
 def save_as_archive(
@@ -443,9 +406,7 @@ def save_as_archive(
         grid = grid.cast_to_unstructured_grid()
 
     if not isinstance(grid, UnstructuredGrid):
-        raise TypeError(
-            f"``grid`` argument must be an UnstructuredGrid, not {type(grid)}"
-        )
+        raise TypeError(f"``grid`` argument must be an UnstructuredGrid, not {type(grid)}")
 
     allowable = []
     if include_solid_elements:
@@ -493,9 +454,7 @@ def save_as_archive(
     missing_mask = nodenum == -1
     if np.any(missing_mask):
         if not allow_missing:
-            raise RuntimeError(
-                'Missing node numbers.  Exiting due "allow_missing=False"'
-            )
+            raise RuntimeError('Missing node numbers.  Exiting due "allow_missing=False"')
         elif exclude_missing:
             log.info("Excluding missing nodes from archive file.")
             nodenum = nodenum.copy()
@@ -507,8 +466,7 @@ def save_as_archive(
             nadd = np.sum(nodenum == -1)
             end_num = start_num + nadd
             log.info(
-                "FEM missing some node numbers.  Adding node numbering "
-                "from %d to %d",
+                "FEM missing some node numbers.  Adding node numbering " "from %d to %d",
                 start_num,
                 end_num,
             )
@@ -520,12 +478,9 @@ def save_as_archive(
         enum = grid.cell_data["ansys_elem_num"]
     else:
         if not allow_missing:
-            raise RuntimeError(
-                'Missing node numbers. Exiting due "allow_missing=False"'
-            )
+            raise RuntimeError('Missing node numbers. Exiting due "allow_missing=False"')
         log.info(
-            "No ANSYS element numbers set in input. "
-            "Adding default range starting from %d",
+            "No ANSYS element numbers set in input. " "Adding default range starting from %d",
             enum_start,
         )
         enum = np.arange(1, ncells + 1, dtype=np.int32)
@@ -553,8 +508,7 @@ def save_as_archive(
         mtype = grid.cell_data["ansys_material_type"]
     else:
         log.info(
-            "No ANSYS element numbers set in input.  "
-            "Adding default range starting from %d",
+            "No ANSYS element numbers set in input.  " "Adding default range starting from %d",
             mtype_start,
         )
         mtype = np.arange(1, ncells + 1, dtype=np.int32)
@@ -568,8 +522,7 @@ def save_as_archive(
         rcon = grid.cell_data["ansys_real_constant"]
     else:
         log.info(
-            "No ANSYS element numbers set in input.  "
-            + "Adding default range starting from %d",
+            "No ANSYS element numbers set in input.  " + "Adding default range starting from %d",
             real_constant_start,
         )
         rcon = np.arange(1, ncells + 1, dtype=np.int32)
@@ -691,9 +644,7 @@ def save_as_archive(
             sig_digits=node_sig_digits,
         )
     else:
-        write_nblock(
-            filename, nodenum, grid.points, mode="a", sig_digits=node_sig_digits
-        )
+        write_nblock(filename, nodenum, grid.points, mode="a", sig_digits=node_sig_digits)
 
     # write remainder of eblock
     _write_eblock(
@@ -768,9 +719,7 @@ def write_nblock(
     if sig_digits < 1:
         raise ValueError(f"`sig_digits` must be greater than 0, got {sig_digits}")
     if pos.ndim != 2 or pos.shape[1] != 3:
-        raise ValueError(
-            f"Invalid position array shape {pos.shape}. Should be shaped `(n, 3)`."
-        )
+        raise ValueError(f"Invalid position array shape {pos.shape}. Should be shaped `(n, 3)`.")
     if angles is not None:
         if angles.ndim != 2 or angles.shape[1] != 3:
             raise ValueError(
@@ -813,9 +762,7 @@ def write_nblock(
             sig_digits,
         )
     else:
-        raise ValueError(
-            "Position and angle arrays must both be either float32 or float64"
-        )
+        raise ValueError("Position and angle arrays must both be either float32 or float64")
 
     return None
 

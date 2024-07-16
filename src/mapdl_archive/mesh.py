@@ -8,7 +8,7 @@ import numpy as np
 import numpy.typing as npt
 from pyvista import PolyData, UnstructuredGrid
 
-from mapdl_archive import _reader, _relaxmidside
+# from mapdl_archive import _reader, _relaxmidside
 from mapdl_archive.elements import ETYPE_MAP
 
 COMP_DICT = Dict[str, npt.NDArray[np.int32]]
@@ -106,32 +106,18 @@ class Mesh:
         keyopt: Dict[int, List[List[int]]] = {},
     ):
         """Initialize the mesh."""
-        self._etype: Optional[npt.NDArray[np.int32]] = (
-            None  # internal element type reference
-        )
+        self._etype: Optional[npt.NDArray[np.int32]] = None  # internal element type reference
         self._grid: Optional[UnstructuredGrid] = None
         self._surf_cache: Optional[PolyData] = None  # cached external surface
         self._enum: Optional[npt.NDArray[np.int32]] = None  # cached element numbering
-        self._etype_cache: Optional[npt.NDArray[np.int32]] = (
-            None  # cached ansys ETYPE num
-        )
-        self._rcon: Optional[npt.NDArray[np.int32]] = (
-            None  # ansys element real constant
-        )
-        self._mtype: Optional[npt.NDArray[np.int32]] = (
-            None  # cached ansys material type
-        )
-        self._node_angles: Optional[npt.NDArray[np.float64]] = (
-            None  # cached node angles
-        )
-        self._node_coord: Optional[npt.NDArray[np.float64]] = (
-            None  # cached node coordinates
-        )
+        self._etype_cache: Optional[npt.NDArray[np.int32]] = None  # cached ansys ETYPE num
+        self._rcon: Optional[npt.NDArray[np.int32]] = None  # ansys element real constant
+        self._mtype: Optional[npt.NDArray[np.int32]] = None  # cached ansys material type
+        self._node_angles: Optional[npt.NDArray[np.float64]] = None  # cached node angles
+        self._node_coord: Optional[npt.NDArray[np.float64]] = None  # cached node coordinates
         self._cached_elements: Optional[List[npt.NDArray[np.int32]]] = None
         self._secnum: Optional[npt.NDArray[np.int32]] = None  # cached section number
-        self._esys: Optional[npt.NDArray[np.int32]] = (
-            None  # cached element coordinate system
-        )
+        self._esys: Optional[npt.NDArray[np.int32]] = None  # cached element coordinate system
         self._etype_id: Optional[npt.NDArray[np.int32]] = None  # cached element type id
 
         # Always set on init
@@ -232,9 +218,7 @@ class Mesh:
                     if etype_ind not in self.tshape_key:  # pragma: no cover
                         continue
                     tshape_num = cast(int, self.tshape_key[etype_ind])
-                    if (
-                        tshape_num >= 19
-                    ):  # weird bug when 'PILO' can be 99 instead of 19.
+                    if tshape_num >= 19:  # weird bug when 'PILO' can be 99 instead of 19.
                         tshape_num = 19
                     tshape_label = SHAPE_MAP[tshape_num]
                     type_ref[etype_ind] = TARGE170_MAP.get(tshape_label, 0)

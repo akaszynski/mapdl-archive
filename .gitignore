@@ -73,3 +73,14 @@ docker/mapdl/v211
 
 # Visual studio code local settings
 .vscode/
+
+# cmake
+#######
+CMakeCache.txt
+CMakeFiles/
+Makefile
+cmake_install.cmake
+compile_commands.json
+
+# cache
+.cache

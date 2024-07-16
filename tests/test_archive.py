@@ -12,7 +12,9 @@ from pyvista import examples as pyvista_examples
 from pyvista.plotting import system_supports_plotting
 
 import mapdl_archive
-from mapdl_archive import Archive, _archive, archive, examples
+
+# from mapdl_archive import Archive, _archive, archive, examples
+from mapdl_archive import _archive
 
 # Windows issues Python 3.12
 WIN_PY312 = sys.version_info.minor == 12 and os.name == "nt"
@@ -48,37 +50,6 @@ def compare_dicts_with_arrays(dict1, dict2):
     return True
 
 
-def proto_cmblock(array):
-    """prototype cmblock code"""
-    items = np.zeros_like(array)
-    items[0] = array[0]
-
-    c = 1
-    in_list = False
-    for i in range(array.size - 1):
-        # check if part of a range
-        if array[i + 1] - array[i] == 1:
-            in_list = True
-        elif array[i + 1] - array[i] > 1:
-            if in_list:
-                items[c] = -array[i]
-                c += 1
-                items[c] = array[i + 1]
-                c += 1
-            else:
-                items[c] = array[i + 1]
-                c += 1
-            in_list = False
-
-    # check if we've ended on a list
-    # catch if last item is part of a list
-    if items[c - 1] != abs(array[-1]):
-        items[c] = -array[i + 1]
-        c += 1
-
-    return items[:c]
-
-
 @pytest.fixture()
 def pathlib_archive():
     filename = TESTFILES_PATH_PATHLIB / "ErnoRadiation.cdb"
@@ -97,24 +68,7 @@ def all_solid_cells_archive():
 
 @pytest.fixture(scope="module")
 def all_solid_cells_archive_linear():
-    return Archive(
-        os.path.join(TESTFILES_PATH, "all_solid_cells.cdb"), force_linear=True
-    )
-
-
-@pytest.mark.parametrize(
-    "array",
-    (
-        np.arange(1, 10, dtype=np.int32),
-        np.array([1, 5, 10, 20, 40, 80], dtype=np.int32),
-        np.array([1, 2, 3, 10, 20, 40, 51, 52, 53], dtype=np.int32),
-        np.array([1, 2, 3, 10, 20, 40], dtype=np.int32),
-        np.array([10, 20, 40, 50, 51, 52], dtype=np.int32),
-    ),
-)
-def test_cython_cmblock(array):
-    """Simply verify it's identical to the prototype python code"""
-    assert np.allclose(proto_cmblock(array), _archive.cmblock_items_from_array(array))
+    return Archive(os.path.join(TESTFILES_PATH, "all_solid_cells.cdb"), force_linear=True)
 
 
 def test_load_dat():
@@ -196,9 +150,7 @@ def test_missing_midside_write(tmpdir):
     with pytest.raises(RuntimeError, match="Unsupported element types"):
         mapdl_archive.save_as_archive(filename, archive.grid, exclude_missing=True)
 
-    mapdl_archive.save_as_archive(
-        filename, archive.grid, exclude_missing=True, reset_etype=True
-    )
+    mapdl_archive.save_as_archive(filename, archive.grid, exclude_missing=True, reset_etype=True)
     archive_new = Archive(filename)
 
     with pytest.raises(TypeError, match="must be an UnstructuredGrid"):
@@ -504,9 +456,7 @@ def test_write_nblock_sig_digits(hex_archive, tmpdir, sig_digits):
     nodes = hex_archive.nodes
     angles = hex_archive.node_angles
     with pytest.raises(ValueError, match="sig_digits"):
-        archive.write_nblock(
-            nblock_filename, hex_archive.nnum, nodes, angles, sig_digits=-1
-        )
+        archive.write_nblock(nblock_filename, hex_archive.nnum, nodes, angles, sig_digits=-1)
 
     archive.write_nblock(
         nblock_filename, hex_archive.nnum, nodes, angles, sig_digits=sig_digits
@@ -565,9 +515,7 @@ def test_overwrite_nblock(tmpdir, hex_archive):
     # ensure that we capture the entire NBLOCK
     with open(hex_archive._filename, "rb") as fid:
         fid.seek(hex_archive._nblock_start)
-        nblock_txt = fid.read(
-            hex_archive._nblock_end - hex_archive._nblock_start
-        ).decode()
+        nblock_txt = fid.read(hex_archive._nblock_end - hex_archive._nblock_start).decode()
 
     assert nblock_txt.startswith("NBLOCK")
     assert nblock_txt.splitlines()[-1].endswith("-1,")
