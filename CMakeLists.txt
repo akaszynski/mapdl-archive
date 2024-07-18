@@ -11,42 +11,25 @@ find_package(Python 3.8
 # Import nanobind through CMake's find_package mechanism
 find_package(nanobind CONFIG REQUIRED)
 
-nanobind_add_module(
-  # Name of the extension
-  _archive
-
-  # Target the stable ABI for Python 3.12+, which reduces
-  # the number of binary wheels that must be built. This
-  # does nothing on older Python versions
-  STABLE_ABI
-
-  # conserve space by reusing a shared libnanobind across libraries
-  NB_STATIC
-
-  src/archive.cpp
-)
-
-# Link OpenMP
-# if(OpenMP_CXX_FOUND)
-#   target_link_libraries(_archive PRIVATE OpenMP::OpenMP_CXX)
-# endif()
+nanobind_add_module(_archive STABLE_ABI NB_STATIC src/archive.cpp)
+nanobind_add_module(_reader STABLE_ABI NB_STATIC src/reader.cpp)
 
 # Compiler-specific options
 if(MSVC)
   # Use MSVC optimization levels and OpenMP setup
   target_compile_options(_archive PRIVATE /O2 /std:c++17)
-  # /openmp:llvm
+  target_compile_options(_reader PRIVATE /O2 /std:c++17)
 else()
   # Assuming GCC or Clang
   target_compile_options(_archive PRIVATE -O3)
-  # -fopenmp
+  target_compile_options(_reader PRIVATE -O3)
 endif()
 
 # Example debugging
-# set solib-search-path /home/user/python/.venv311/lib/python3.11/site-packages/stl_reader/
-# set breakpoint with b qual.cpp:4872
-# target_compile_options(stl_reader PRIVATE -g -O0)
-# target_compile_options(pfh PRIVATE -g -O0)
+# set solib-search-path /home/user/python/.venv311/lib/python3.11/site-packages/mapdl_archive/
+# set breakpoint with b _reader.cpp:<LINE_NUMBER>
+# target_compile_options(_reader PRIVATE -g -O0)
 
 # Install directive for scikit-build-core
 install(TARGETS _archive LIBRARY DESTINATION mapdl_archive)
+install(TARGETS _reader LIBRARY DESTINATION mapdl_archive)
