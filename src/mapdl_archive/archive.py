@@ -833,14 +833,14 @@ def write_cmblock(
         )
 
     if not isinstance(items, np.ndarray):
-        items_arr: NDArray[np.int32] = np.array(items, dtype=np.int32)
+        items_arr = np.array(items, dtype=np.int32)
     else:
         items_arr = items.astype(np.int32, copy=False)
 
     # All this python writing could be a bottleneck for non-contiguous CMBLOCKs.
     # consider cythonizing this in the future
-    cmblock_items: NDArray[np.int32] = _archive.cmblock_items_from_array(items_arr)
-    nitems: int = len(cmblock_items)
+    cmblock_items = _archive.cmblock_items_from_array(items_arr)
+    nitems = len(cmblock_items)
     print(f"CMBLOCK,{comp_name},{comp_type},{nitems:8d}", file=fid)
     print(f"(8i{digit_width})", file=fid)
     digit_formatter = f"%{digit_width}d"
