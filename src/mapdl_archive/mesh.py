@@ -101,6 +101,7 @@ class Mesh:
         self,
         nnum: NDArray[np.int32],
         nodes: NDArray[np.float64],
+        node_angles: NDArray[np.float64],
         elem: NDArray[np.int32],
         elem_off: NDArray[np.int32],
         ekey: NDArray[np.int32],
@@ -118,8 +119,6 @@ class Mesh:
         self._etype_cache: Optional[NDArray[np.int32]] = None  # cached ansys ETYPE num
         self._rcon: Optional[NDArray[np.int32]] = None  # ansys element real constant
         self._mtype: Optional[NDArray[np.int32]] = None  # cached ansys material type
-        self._node_angles: Optional[NDArray[np.float64]] = None  # cached node angles
-        self._node_coord: Optional[NDArray[np.float64]] = None  # cached node coordinates
         self._cached_elements: Optional[List[NDArray[np.int32]]] = None
         self._secnum: Optional[NDArray[np.int32]] = None  # cached section number
         self._esys: Optional[NDArray[np.int32]] = None  # cached element coordinate system
@@ -128,6 +127,7 @@ class Mesh:
         # Always set on init
         self._nnum: NDArray[np.int32] = nnum
         self._nodes: NDArray[np.float64] = nodes
+        self._node_angles: NDArray[np.float64] = node_angles
         self._elem: NDArray[np.int32] = elem
         self._elem_off: NDArray[np.int32] = elem_off
         self._ekey: NDArray[np.int32] = ekey
@@ -622,9 +622,7 @@ class Mesh:
          [0.75 0.5  4.  ]
          [0.75 0.5  4.5 ]]
         """
-        if self._node_coord is None and self._nodes is not None:
-            self._node_coord = np.ascontiguousarray(self._nodes[:, :3])
-        return self._node_coord
+        return self._nodes
 
     @property
     def node_angles(self) -> Optional[NDArray[np.float64]]:
@@ -645,8 +643,6 @@ class Mesh:
          [0.   0.   0.  ]]
 
         """
-        if self._node_angles is None:
-            self._node_angles = np.ascontiguousarray(self._nodes[:, 3:])
         return self._node_angles
 
     def __repr__(self) -> str:
@@ -700,7 +696,7 @@ class Mesh:
         file size.
 
         """
-        grid: UnstructuredGrid = self._parse_vtk(
+        grid = self._parse_vtk(
             allowable_types=allowable_types,
             force_linear=force_linear,
             null_unallowed=null_unallowed,

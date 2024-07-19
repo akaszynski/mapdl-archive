@@ -25,6 +25,7 @@ class Archive:
     nblock_end: int
     nnum: NDArray[np.int32]
     nodes: NDArray[np.double]
+    node_angles: NDArray[np.double]
 
     def __init__(
         self, fname: str, read_params: bool = False, debug: bool = False, read_eblock: bool = True

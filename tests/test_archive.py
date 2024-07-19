@@ -111,7 +111,7 @@ def test_invalid_archive(tmp_path: Path, hex_archive: Archive) -> None:
     mapdl_archive.write_nblock(nblock_filename, hex_archive.nnum, hex_archive.nodes)
 
     archive = Archive(nblock_filename)
-    assert archive.grid is None
+    assert archive.grid.n_cells == 0
 
 
 def test_write_angle(tmp_path: Path, hex_archive: Archive) -> None:

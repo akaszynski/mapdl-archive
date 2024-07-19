@@ -137,6 +137,7 @@ class Archive(Mesh):
         super().__init__(
             self._archive.nnum,
             self._archive.nodes,
+            self._archive.node_angles,
             self._archive.elem,
             self._archive.elem_off,
             np.array(self._archive.elem_type),

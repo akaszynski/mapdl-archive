@@ -1,7 +1,7 @@
 """Test the C++ _reader wrapper."""
 
 import os
-from _pytest._py.path import LocalPath
+from pathlib import Path
 
 import numpy as np
 import numpy.typing as npt
@@ -131,10 +131,10 @@ CMBLOCK_ELEM_STR = """CMBLOCK,ELMISC ,ELEM,       2  ! users element component d
 ECOMP_ELMISC = np.arange(82, 91)
 
 
-def test_read_et(tmpdir: LocalPath) -> None:
+def test_read_et(tmp_path: Path) -> None:
     et_line = "ET, 4, 186\n"
 
-    filename = str(tmpdir.join("tmp.cdb"))
+    filename = str(tmp_path / "tmp.cdb")
     with open(filename, "w") as fid:
         fid.write(et_line)
 
@@ -143,8 +143,8 @@ def test_read_et(tmpdir: LocalPath) -> None:
     assert np.array_equal([[4, 186]], archive.elem_type)
 
 
-def test_read_etblock(tmpdir: LocalPath) -> None:
-    filename = str(tmpdir.join("tmp.cdb"))
+def test_read_etblock(tmp_path: Path) -> None:
+    filename = str(tmp_path / "tmp.cdb")
     with open(filename, "w") as fid:
         fid.write(ETBLOCK_STR)
 
@@ -153,8 +153,8 @@ def test_read_etblock(tmpdir: LocalPath) -> None:
     assert np.array_equal([[1, 181]], archive.elem_type)
 
 
-def test_read_eblock_not_solid(tmpdir: LocalPath) -> None:
-    filename = str(tmpdir.join("tmp.cdb"))
+def test_read_eblock_not_solid(tmp_path: Path) -> None:
+    filename = str(tmp_path / "tmp.cdb")
     with open(filename, "w") as fid:
         fid.write(EBLOCK_STR_NOT_SOLID)
 
@@ -163,8 +163,8 @@ def test_read_eblock_not_solid(tmpdir: LocalPath) -> None:
     assert archive.n_elem == 0
 
 
-def test_read_eblock(tmpdir: LocalPath) -> None:
-    filename = str(tmpdir.join("tmp.cdb"))
+def test_read_eblock(tmp_path: Path) -> None:
+    filename = str(tmp_path / "tmp.cdb")
     with open(filename, "w") as fid:
         fid.write(EBLOCK_STR)
 
@@ -184,8 +184,8 @@ def test_read_eblock(tmpdir: LocalPath) -> None:
     assert np.allclose(archive.elem_off, np.arange(0, archive.elem.size + 1, 30))
 
 
-def test_read_keyopt(tmpdir: LocalPath) -> None:
-    filename = str(tmpdir.join("tmp.cdb"))
+def test_read_keyopt(tmp_path: Path) -> None:
+    filename = str(tmp_path / "tmp.cdb")
     with open(filename, "w") as fid:
         fid.write(KEYOPT_STR)
 
@@ -196,8 +196,8 @@ def test_read_keyopt(tmpdir: LocalPath) -> None:
     assert archive.keyopt[1][1] == [2, 0]
 
 
-def test_read_rlblock(tmpdir: LocalPath) -> None:
-    filename = str(tmpdir.join("tmp.cdb"))
+def test_read_rlblock(tmp_path: Path) -> None:
+    filename = str(tmp_path / "tmp.cdb")
     with open(filename, "w") as fid:
         fid.write(RLBLOCK_STR)
 
@@ -210,21 +210,20 @@ def test_read_rlblock(tmpdir: LocalPath) -> None:
     assert np.allclose(archive.rdat[0], expected_val)
 
 
-def test_read_nblock(tmpdir: LocalPath) -> None:
-    filename = str(tmpdir.join("tmp.cdb"))
+def test_read_nblock(tmp_path: Path) -> None:
+    filename = str(tmp_path / "tmp.cdb")
     with open(filename, "w") as fid:
         fid.write(NBLOCK_STR)
 
     archive = _reader.Archive(filename, debug=True)
     archive.read_nblock()
-
     archive.n_nodes == 9
     assert np.array_equal(archive.nnum, NBLOCK_NODE_ID_ARR)
-    assert np.allclose(archive.nodes[:, :3], NBLOCK_POS_ARRAY)
+    assert np.allclose(archive.nodes, NBLOCK_POS_ARRAY)
 
 
-def test_read_nblock_incomplete(tmpdir: LocalPath) -> None:
-    filename = str(tmpdir.join("tmp.cdb"))
+def test_read_nblock_incomplete(tmp_path: Path) -> None:
+    filename = str(tmp_path / "tmp.cdb")
     with open(filename, "w") as fid:
         fid.write(NBLOCK_INCOMPLETE)
 
@@ -233,13 +232,13 @@ def test_read_nblock_incomplete(tmpdir: LocalPath) -> None:
 
     archive.n_nodes == 3
     assert np.array_equal(archive.nnum, [1, 2, 3])
-    assert np.allclose(archive.nodes[0, :3], [0.1, 0.0, 0.0])
-    assert np.allclose(archive.nodes[1, :3], [0.5, 0.8, 0.0])
-    assert np.allclose(archive.nodes[2, :3], [0.1, 0.7, 0.9])
+    assert np.allclose(archive.nodes[0], [0.1, 0.0, 0.0])
+    assert np.allclose(archive.nodes[1], [0.5, 0.8, 0.0])
+    assert np.allclose(archive.nodes[2], [0.1, 0.7, 0.9])
 
 
-def test_read_cmblock_node(tmpdir: LocalPath) -> None:
-    filename = str(tmpdir.join("tmp.cdb"))
+def test_read_cmblock_node(tmp_path: Path) -> None:
+    filename = str(tmp_path / "tmp.cdb")
     with open(filename, "w") as fid:
         fid.write(CMBLOCK_NODE_STR)
 
@@ -249,8 +248,8 @@ def test_read_cmblock_node(tmpdir: LocalPath) -> None:
     assert np.array_equal(archive.node_comps["INTERFACE"], NCOMP_INTERFACE)
 
 
-def test_read_cmblock_elem(tmpdir: LocalPath) -> None:
-    filename = str(tmpdir.join("tmp.cdb"))
+def test_read_cmblock_elem(tmp_path: Path) -> None:
+    filename = str(tmp_path / "tmp.cdb")
     with open(filename, "w") as fid:
         fid.write(CMBLOCK_ELEM_STR)
 
@@ -270,7 +269,8 @@ def test_read_mesh200() -> None:
     # spot check
     # 1290        0        0 4.0000000000000E-001 6.0000000000000E-001
     assert archive.nnum[1289] == 1290
-    assert np.allclose(archive.nodes[1289], np.array([0.4, 0.6, 0.0, 0.0, 0.0, 0.0]))
+    assert np.allclose(archive.nodes[1289], np.array([0.4, 0.6, 0.0]))
+    assert np.allclose(archive.node_angles[1289], 0)
 
 
 def test_read_complex_archive() -> None:
@@ -335,7 +335,7 @@ def test_read_complex_archive() -> None:
     archive = _reader.Archive(filename)
     # archive = _reader.Archive(filename, debug=True)
     archive.read()
-    assert np.allclose(archive.nodes[:, :3], nblock_expected)
+    assert np.allclose(archive.nodes, nblock_expected)
     assert archive.n_elem == 4
 
     # map ansys element type 4 to VTK type 4: 3D Solid (Hexahedral, wedge,
