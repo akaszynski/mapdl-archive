@@ -1,27 +1,39 @@
+from typing import TypeVar
+
 import numpy as np
-import numpy.typing as npt
+from numpy.typing import NDArray
+
+T = TypeVar("T", np.float32, np.float64)
+U = TypeVar("U", np.int32, np.int64)
 
 def write_nblock(
     filename: str,
     max_node_id: int,
-    node_id: npt.NDArray[np.int32],
-    nodes: npt.NDArray[np.float64],
-    angles: npt.NDArray[np.float64],
+    node_id: NDArray[np.int32],
+    nodes: NDArray[np.float64],
+    angles: NDArray[np.float64],
     sig_digits: int,
     mode: str,
 ) -> None: ...
 def write_eblock(
     filename: str,
-    elem_id: npt.NDArray[np.int32],
-    etype: npt.NDArray[np.int32],
-    mtype: npt.NDArray[np.int32],
-    rcon: npt.NDArray[np.int32],
-    elem_nnodes: npt.NDArray[np.int32],
-    cells: npt.NDArray[np.int32],
-    offset: npt.NDArray[np.int32],
-    celltypes: npt.NDArray[np.uint8],
-    typenum: npt.NDArray[np.int32],
-    nodenum: npt.NDArray[np.int32],
-    mode: str = "w",
+    n_elem: int,
+    elem_id: NDArray[np.int32],
+    etype: NDArray[np.int32],
+    mtype: NDArray[np.int32],
+    rcon: NDArray[np.int32],
+    elem_nnodes: NDArray[np.int32],
+    celltypes: NDArray[np.uint8],
+    offset: NDArray[U],
+    cells: NDArray[U],
+    typenum: NDArray[np.int32],
+    nodenum: NDArray[np.int32],
+    mode: str,
 ) -> None: ...
-def cmblock_items_from_array(array: npt.NDArray[np.int32]) -> npt.NDArray[np.int32]: ...
+def cmblock_items_from_array(array: NDArray[np.int32]) -> NDArray[np.int32]: ...
+def reset_midside(
+    celltypes: NDArray[np.uint8],
+    cells: NDArray[U],
+    offset: NDArray[U],
+    points: NDArray[T],
+) -> None: ...

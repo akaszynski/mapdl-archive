@@ -12,7 +12,7 @@ find_package(Python 3.8
 find_package(nanobind CONFIG REQUIRED)
 
 nanobind_add_module(_archive STABLE_ABI NB_STATIC src/archive.cpp)
-nanobind_add_module(_reader STABLE_ABI NB_STATIC src/reader.cpp)
+nanobind_add_module(_reader STABLE_ABI NB_STATIC src/reader.cpp src/vtk_support.cpp)
 
 # Compiler-specific options
 if(MSVC)

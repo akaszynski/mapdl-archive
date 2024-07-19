@@ -11,7 +11,6 @@
 #endif
 
 namespace nb = nanobind;
-// using namespace nb::literals;
 
 template <typename T, size_t N>
 using NDArray = nb::ndarray<nb::numpy, T, nb::ndim<N>, nb::c_contig>;

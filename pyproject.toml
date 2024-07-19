@@ -50,7 +50,7 @@ quiet-level = 3
 skip = '*.cxx,*.h,*.gif,*.png,*.jpg,*.js,*.html,*.doctree,*.ttf,*.woff,*.woff2,*.eot,*.mp4,*.inv,*.pickle,*.ipynb,flycheck*,./.git/*,./.hypothesis/*,*.yml,./doc/build/*,./doc/images/*,./dist/*,*~,.hypothesis*,*.cpp,*.c,*.dat,*.cdb'
 
 [tool.mypy]
-plugins = ["numpy.typing.mypy_plugin"]
+plugins = ["numpy.typing.mypy_plugin", 'npt_promote']
 strict = true
 
 [tool.pylsp-mypy]

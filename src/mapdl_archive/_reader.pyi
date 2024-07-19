@@ -1,19 +1,50 @@
-from typing import Dict, List
+from typing import Dict, List, Tuple, TypeVar
 
 import numpy as np
-import numpy.typing as npt
+from numpy.typing import NDArray
+
+# VTK uses int32 on Windows and int64 on Linux
+U = TypeVar("U", np.int32, np.int64)
 
 class Archive:
-    elem: npt.NDArray[np.int32]
-    elem_off: npt.NDArray[np.int32]
+    elem: NDArray[np.int32]
+    elem_off: NDArray[np.int32]
     n_elem: int
     keyopt: Dict[int, List[List[int]]]
+    rdat: List[List[float]]
+    rnum: List[int]
+    elem_type: List[List[int]]
+
+    # Components
+    elem_comps: Dict[str, NDArray[np.int32]]
+    node_comps: Dict[str, NDArray[np.int32]]
+
+    # node block
+    n_nodes: int
+    nblock_start: int
+    nblock_end: int
+    nnum: NDArray[np.int32]
+    nodes: NDArray[np.double]
 
     def __init__(
-        self, fname: str, readParams: bool = False, dbg: bool = False, readEblock: bool = True
+        self, fname: str, read_params: bool = False, debug: bool = False, read_eblock: bool = True
     ) -> None: ...
+    def get_element_types(self) -> NDArray[np.int32]: ...
+    def read_eblock(self) -> None: ...
     def read_et_line(self) -> None: ...
     def read_etblock(self) -> None: ...
-    def read_eblock(self) -> None: ...
     def read_keyopt_line(self) -> None: ...
-    def get_element_types(self) -> npt.NDArray[np.int32]: ...
+    def read_nblock(self) -> None: ...
+    def read_rlblock(self) -> None: ...
+    def read_cmblock(self) -> None: ...
+    def read(self) -> None: ...
+    def to_vtk(
+        self, type_map: NDArray[np.int32]
+    ) -> Tuple[NDArray[int], NDArray[np.uint8], NDArray[int]]: ...
+
+def ans_to_vtk(
+    elem: NDArray[np.int32],
+    elem_off: NDArray[np.int32],
+    type_ref: NDArray[np.int32],
+    nnum: NDArray[np.int32],
+) -> Tuple[NDArray[U], NDArray[np.uint8], NDArray[U]]: ...

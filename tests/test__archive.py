@@ -1,6 +1,6 @@
 """Test the C++ wrapper."""
 
-from py.path import local
+from pathlib import Path
 
 import numpy as np
 import numpy.typing as npt
@@ -88,8 +88,8 @@ def test_cmblock_items_from_array(array: npt.NDArray[np.int32]) -> None:
     assert np.allclose(proto_cmblock(array), _archive.cmblock_items_from_array(array))
 
 
-def test_write_nblock(tmpdir: local) -> None:
-    filename = str(tmpdir.join("out.cdb"))
+def test_write_nblock(tmpdir: Path) -> None:
+    filename = str(tmpdir / "out.cdb")
     angles = np.empty((0, 0), dtype=np.double)
     _archive.write_nblock(filename, NODE_ID_ARR.max(), NODE_ID_ARR, POS_ARRAY, angles, 13, "w")
 
