@@ -139,6 +139,7 @@ def test_read_et(tmp_path: Path) -> None:
         fid.write(et_line)
 
     archive = _reader.Archive(filename)
+    archive.read_line()
     archive.read_et_line()
     assert np.array_equal([[4, 186]], archive.elem_type)
 
@@ -149,6 +150,7 @@ def test_read_etblock(tmp_path: Path) -> None:
         fid.write(ETBLOCK_STR)
 
     archive = _reader.Archive(filename)
+    archive.read_line()
     archive.read_etblock()
     assert np.array_equal([[1, 181]], archive.elem_type)
 
@@ -159,6 +161,7 @@ def test_read_eblock_not_solid(tmp_path: Path) -> None:
         fid.write(EBLOCK_STR_NOT_SOLID)
 
     archive = _reader.Archive(filename)
+    archive.read_line()
     archive.read_eblock()
     assert archive.n_elem == 0
 
@@ -169,6 +172,7 @@ def test_read_eblock(tmp_path: Path) -> None:
         fid.write(EBLOCK_STR)
 
     archive = _reader.Archive(filename)
+    archive.read_line()
     archive.read_eblock()
     assert archive.n_elem == 4
 
@@ -190,7 +194,9 @@ def test_read_keyopt(tmp_path: Path) -> None:
         fid.write(KEYOPT_STR)
 
     archive = _reader.Archive(filename)
+    archive.read_line()
     archive.read_keyopt_line()
+    archive.read_line()
     archive.read_keyopt_line()
     assert archive.keyopt[1][0] == [1, 0]
     assert archive.keyopt[1][1] == [2, 0]
@@ -202,6 +208,7 @@ def test_read_rlblock(tmp_path: Path) -> None:
         fid.write(RLBLOCK_STR)
 
     archive = _reader.Archive(filename)
+    archive.read_line()
     archive.read_rlblock()
     assert archive.rnum == [2]  # set number
     assert len(archive.rdat) == 1
@@ -216,10 +223,12 @@ def test_read_nblock(tmp_path: Path) -> None:
         fid.write(NBLOCK_STR)
 
     archive = _reader.Archive(filename, debug=True)
-    archive.read_nblock()
+    pos = archive.read_line()
+    archive.read_nblock(pos)
     archive.n_nodes == 9
     assert np.array_equal(archive.nnum, NBLOCK_NODE_ID_ARR)
     assert np.allclose(archive.nodes, NBLOCK_POS_ARRAY)
+    assert archive.nblock_start == pos
 
 
 def test_read_nblock_incomplete(tmp_path: Path) -> None:
@@ -228,7 +237,8 @@ def test_read_nblock_incomplete(tmp_path: Path) -> None:
         fid.write(NBLOCK_INCOMPLETE)
 
     archive = _reader.Archive(filename, debug=True)
-    archive.read_nblock()
+    pos = archive.read_line()
+    archive.read_nblock(pos)
 
     archive.n_nodes == 3
     assert np.array_equal(archive.nnum, [1, 2, 3])
@@ -243,6 +253,7 @@ def test_read_cmblock_node(tmp_path: Path) -> None:
         fid.write(CMBLOCK_NODE_STR)
 
     archive = _reader.Archive(filename, debug=True)
+    archive.read_line()
     archive.read_cmblock()
     assert "INTERFACE" in archive.node_comps
     assert np.array_equal(archive.node_comps["INTERFACE"], NCOMP_INTERFACE)
@@ -254,6 +265,7 @@ def test_read_cmblock_elem(tmp_path: Path) -> None:
         fid.write(CMBLOCK_ELEM_STR)
 
     archive = _reader.Archive(filename, debug=True)
+    archive.read_line()
     archive.read_cmblock()
     assert "ELMISC" in archive.elem_comps
     assert np.array_equal(archive.elem_comps["ELMISC"], ECOMP_ELMISC)

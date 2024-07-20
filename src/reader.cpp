@@ -26,7 +26,7 @@ using namespace nb::literals;
 #define strtok_r strtok_s
 #endif
 
-// #define DEBUG
+#define DEBUG
 
 static const double DIV_OF_TEN[] = {
     1.0e-0,  1.0e-1,  1.0e-2,  1.0e-3,  1.0e-4,  1.0e-5,  1.0e-6,  1.0e-7,  1.0e-8,  1.0e-9,
@@ -489,10 +489,14 @@ NDArray<int, 1> InterpretComponent(const std::vector<int> &component) {
 
 class Archive {
 
-  public:
-    std::string filename;
-    bool read_parameters;
+  private:
+    std::string line;
     bool debug;
+    std::string filename;
+
+  public:
+    bool read_parameters;
+
     bool read_eblock;
     bool eblock_is_read = false;
     bool nblock_is_read = false;
@@ -552,8 +556,6 @@ class Archive {
             std::cout << "reading ET" << std::endl;
         }
 
-        std::string line;
-        std::getline(cfile, line);
         std::istringstream iss(line);
         std::string token;
         std::vector<int> et_vals;
@@ -576,14 +578,12 @@ class Archive {
         }
     }
 
-    // Read ETBLOCK line
+    // Read ETBLOCK
     void ReadETBlock() {
-        std::string line;
         std::string token;
         std::vector<int> values;
 
-        // start by reading in the first line, which must be an ETBLOCK
-        std::getline(cfile, line);
+        // Assumes current line is an ETBLOCK
         std::istringstream iss(line);
 
         // skip first item (ETBLOCK)
@@ -622,17 +622,14 @@ class Archive {
         }
     }
 
+    // Read EBLOCK
     void ReadEBlock() {
-
-        // start by reading in the first line, which must be an EBLOCK
-        std::string line;
-        std::getline(cfile, line);
-
         // Sometimes, DAT files contain two EBLOCKs. Read only the first block.
         if (eblock_is_read) {
             return;
         }
 
+        // Assumes already start of EBLOCK
         std::istringstream iss(line);
 
         // Only read in SOLID eblocks
@@ -667,8 +664,7 @@ class Archive {
             std::cout << "reading KEYOPT" << std::endl;
         }
 
-        std::string line;
-        std::getline(cfile, line);
+        // Assumes at KEYOPT line
         std::istringstream iss(line);
         std::string token;
 
@@ -703,14 +699,15 @@ class Archive {
         }
     }
 
+    // Read RLBLOCK
     void ReadRLBLOCK() {
-        std::string line;
-        std::getline(cfile, line);
         if (debug) {
             std::cout << "reading RLBLOCK" << std::endl;
         }
 
         std::vector<int> set_dat;
+
+        // Assumes line at RLBLOCK
         std::istringstream iss(line);
         std::string token;
         // while (std::getline(iss, token, ',')) {
@@ -797,14 +794,7 @@ class Archive {
         }
     }
 
-    void ReadNBlock() {
-
-        // Before reading NBLOCK, save where the nblock started
-        nblock_start = cfile.tellg();
-
-        // start by reading in the first line, which must be a NBLOCK
-        std::string line;
-        std::getline(cfile, line);
+    void ReadNBlock(const int nblock_start) {
 
         // Sometimes, DAT files contains multiple node blocks. Read only the first block.
         if (nblock_is_read) {
@@ -812,7 +802,9 @@ class Archive {
         }
 
         // Get size of NBLOCK
+        // Assumes line is at NBLOCK
         try {
+            // Number of nodes is last item in string
             n_nodes = std::stoi(line.substr(line.rfind(',') + 1));
         } catch (...) {
             std::cerr << "Failed to read number of nodes when reading:" << line << std::endl;
@@ -859,18 +851,13 @@ class Archive {
         }
     }
 
+    // Read CMBLOCK
     void ReadCMBlock() {
-        std::string line;
-        std::getline(cfile, line);
-
-        if (line.compare(0, 8, "CMBLOCK,") != 0 && line.compare(0, 8, "cmblock,") != 0) {
-            return;
-        }
-
         if (debug) {
             std::cout << "reading CMBLOCK" << std::endl;
         }
 
+        // Assumes line at CMBLOCK
         std::istringstream iss(line);
         std::string token;
         std::vector<std::string> split_line;
@@ -938,6 +925,10 @@ class Archive {
         } else if (line_comp_type.find("ELEM") != std::string::npos) {
             elem_comps[comname] = InterpretComponent(component);
         }
+
+        if (debug) {
+            std::cout << "Done reading CMBLOCK" << std::endl;
+        }
     }
 
     void Read() {
@@ -950,112 +941,83 @@ class Archive {
             // line. It's faster and the parsing logic is always based on the first
             // character
             first_char = cfile.peek();
-            // if (debug) {
-            //   std::cout << "Read character: " << static_cast<char>(first_char) <<
-            //   std::endl;
-            // }
+#ifdef DEBUG
+            std::cout << "Read character: " << static_cast<char>(first_char) << std::endl;
+#endif
             if (cfile.eof()) {
+#ifdef DEBUG
+                std::cout << "Reached EOF" << std::endl;
+#endif
                 break;
 
             } else if (first_char == 'E' || first_char == 'e') {
+                std::getline(cfile, line);
+
                 // E commands (ET or ETBLOCK)
 
                 if (debug) {
                     std::cout << "Read E" << std::endl;
                 }
 
-                // get line but do not advance
-                position_start = cfile.tellg();
-                std::getline(cfile, line);
-                position_end = cfile.tellg();
-                cfile.seekg(position_start);
-
                 // Record element type
                 if (line.compare(0, 3, "ET,") == 0 || line.compare(0, 3, "et,") == 0) {
                     ReadETLine();
                 } else if (
-                    line.compare(0, 7, "ETBLOCK") == 0 ||
-                    line.compare(0, 7, "etblock") == 0) {
+                    line.compare(0, 6, "ETBLOC") == 0 || line.compare(0, 6, "etbloc") == 0) {
                     ReadETBlock();
                 } else if (
                     line.compare(0, 6, "EBLOCK") == 0 ||
                     line.compare(0, 6, "eblock") == 0 && read_eblock) {
                     ReadEBlock();
-                } else {
-                    cfile.seekg(position_end);
                 }
             } else if (first_char == 'K' || first_char == 'k') {
+                std::getline(cfile, line);
                 if (debug) {
                     std::cout << "Read K" << std::endl;
                 }
 
-                // get line but do not advance
-                position_start = cfile.tellg();
-                std::getline(cfile, line);
-                position_end = cfile.tellg();
-                cfile.seekg(position_start);
-
                 // Record keyopt
                 if (line.compare(0, 5, "KEYOP") == 0 || line.compare(0, 5, "keyop") == 0) {
                     ReadKEYOPTLine();
-                } else {
-                    cfile.seekg(position_end);
                 }
 
             } else if (first_char == 'R' || first_char == 'r') {
+                std::getline(cfile, line);
                 // test for RLBLOCK
                 if (debug) {
                     std::cout << "Read R" << std::endl;
                 }
 
-                // get line but do not advance
-                position_start = cfile.tellg();
-                std::getline(cfile, line);
-                position_end = cfile.tellg();
-                cfile.seekg(position_start);
-
                 // Record keyopt
                 if (line.compare(0, 5, "RLBLO") == 0 || line.compare(0, 5, "rlblo") == 0) {
                     ReadRLBLOCK();
-                } else {
-                    cfile.seekg(position_end);
                 }
 
             } else if (first_char == 'N' || first_char == 'n') {
+                position_start = cfile.tellg();
+                std::getline(cfile, line);
                 // test for NBLOCK
 
                 if (debug) {
                     std::cout << "Read N" << std::endl;
                 }
 
-                // get line but do not advance
-                position_start = cfile.tellg();
-                std::getline(cfile, line);
-                position_end = cfile.tellg();
-                cfile.seekg(position_start);
-
                 // Record node block
                 if (line.compare(0, 5, "NBLOC") == 0 || line.compare(0, 5, "nbloc") == 0) {
-                    ReadNBlock();
-                } else {
-                    cfile.seekg(position_end);
+                    ReadNBlock(position_start);
                 }
+
             } else if (first_char == 'C' || first_char == 'c') {
+                std::getline(cfile, line);
+
                 if (debug) {
                     std::cout << "Read C" << std::endl;
                 }
 
-                // get line but do not advance
-                position_start = cfile.tellg();
-                std::getline(cfile, line);
-                position_end = cfile.tellg();
-                cfile.seekg(position_start);
-
                 // Record component block
                 if (line.compare(0, 5, "CMBLO") == 0 || line.compare(0, 5, "cmblo") == 0) {
+                    std::cout << "Reading CMBLOCK" << std::endl;
                     ReadCMBlock();
-                } else {
-                    cfile.seekg(position_end);
                 }
             } else {
                 if (debug) {
@@ -1065,6 +1027,13 @@ class Archive {
                 cfile.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
             }
         }
+    }
+
+    // Read line and return the position prior to reading the line
+    int ReadLine() {
+        int pos = cfile.tellg();
+        std::getline(cfile, line);
+        return pos;
     }
 
     // Convert ansys style connectivity to VTK connectivity
@@ -1159,9 +1128,9 @@ NB_MODULE(_reader, m) {
         .def_ro("n_nodes", &Archive::n_nodes)
         .def_ro("nblock_start", &Archive::nblock_start)
         .def_ro("nblock_end", &Archive::nblock_end)
-        .def_ro("nblock_end", &Archive::nblock_end)
         .def("to_vtk", &Archive::ToVTK)
         .def("read", &Archive::Read)
+        .def("read_line", &Archive::ReadLine)
         .def("read_nblock", &Archive::ReadNBlock)
         .def("read_rlblock", &Archive::ReadRLBLOCK)
         .def("read_keyopt_line", &Archive::ReadKEYOPTLine)
