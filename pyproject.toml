@@ -36,7 +36,7 @@ Repository = "https://github.com/akaszynski/mapdl-archive"
 archs = ["auto64"]  # 64-bit only
 skip = "cp36-* cp37-* pp* *musllinux*"  # disable PyPy and musl-based wheels
 test-command = "pytest {project}/tests"
-test-requires = "pytest pytest-cov"
+test-requires = "pytest"
 
 [tool.cibuildwheel.macos]
 archs = ["native"]
@@ -72,3 +72,4 @@ extend-select = ["I"]
 build-dir = "build/{wheel_tag}"
 minimum-version = "0.4"
 sdist.exclude = [".github", "*.png", "tests", ".mypy_cache", ".pre-commit-config.yaml", "*_cache", "CONTRIBUTING.md", ".gitignore"]
+sdist.include = ["*.cpp"]

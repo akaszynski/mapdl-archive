@@ -2,7 +2,7 @@
  MAPDL Archive Reader
 ######################
 
-|pypi| |GH-CI| |MIT| |black|
+|pypi| |GH-CI| |MIT|
 
 .. |pypi| image:: https://img.shields.io/pypi/v/mapdl-archive.svg?logo=python&logoColor=white
    :target: https://pypi.org/project/mapdl-archive/
@@ -12,9 +12,6 @@
 
 .. |MIT| image:: https://img.shields.io/badge/License-MIT-yellow.svg
    :target: https://opensource.org/licenses/MIT
-
-.. |black| image:: https://img.shields.io/badge/code%20style-black-000000.svg?style=flat
-   :target: https://github.com/psf/black
 
 Read blocked Ansys MAPDL archive files written from MAPDL using
 ``CDWRITE``.

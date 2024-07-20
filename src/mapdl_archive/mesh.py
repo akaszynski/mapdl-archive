@@ -91,7 +91,7 @@ def unique_rows(a: NDArray[T]) -> Tuple[NDArray[T], NDArray[int], NDArray[int]]:
     b = a.view(np.dtype((np.void, a.dtype.itemsize * a.shape[1])))
     _, idx, idx2 = np.unique(b, True, True)
 
-    return a[idx], idx, idx2
+    return a[idx], idx, idx2.ravel()
 
 
 class Mesh:
