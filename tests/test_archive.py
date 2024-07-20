@@ -3,21 +3,24 @@
 import os
 import pathlib
 import sys
+from typing import Union
 
+from pathlib import Path
 import numpy as np
 import pytest
 import pyvista as pv
 from pyvista import CellType
 from pyvista import examples as pyvista_examples
-from pyvista.plotting import system_supports_plotting
+from pyvista.plotting import system_supports_plotting  # type: ignore
 
 import mapdl_archive
-from mapdl_archive import Archive, _archive, archive, examples
+from mapdl_archive import Archive, _archive, examples, _reader
 
 # Windows issues Python 3.12
 WIN_PY312 = sys.version_info.minor == 12 and os.name == "nt"
 skip_plotting = pytest.mark.skipif(
-    WIN_PY312 or not system_supports_plotting(), reason="Requires active X Server"
+    WIN_PY312 or not system_supports_plotting(),  # type: ignore
+    reason="Requires active X Server",
 )
 
 LINEAR_CELL_TYPES = [
@@ -39,138 +42,80 @@ TESTFILES_PATH_PATHLIB = pathlib.Path(TESTFILES_PATH)
 DAT_FILE = os.path.join(TESTFILES_PATH, "Panel_Transient.dat")
 
 
-def compare_dicts_with_arrays(dict1, dict2):
-    if dict1.keys() != dict2.keys():
-        return False
-    for key in dict1:
-        if not np.array_equal(dict1[key], dict2[key]):
-            return False
-    return True
-
-
-def proto_cmblock(array):
-    """prototype cmblock code"""
-    items = np.zeros_like(array)
-    items[0] = array[0]
-
-    c = 1
-    in_list = False
-    for i in range(array.size - 1):
-        # check if part of a range
-        if array[i + 1] - array[i] == 1:
-            in_list = True
-        elif array[i + 1] - array[i] > 1:
-            if in_list:
-                items[c] = -array[i]
-                c += 1
-                items[c] = array[i + 1]
-                c += 1
-            else:
-                items[c] = array[i + 1]
-                c += 1
-            in_list = False
-
-    # check if we've ended on a list
-    # catch if last item is part of a list
-    if items[c - 1] != abs(array[-1]):
-        items[c] = -array[i + 1]
-        c += 1
-
-    return items[:c]
-
-
 @pytest.fixture()
-def pathlib_archive():
+def pathlib_archive() -> Archive:
     filename = TESTFILES_PATH_PATHLIB / "ErnoRadiation.cdb"
     return Archive(filename)
 
 
 @pytest.fixture()
-def hex_archive():
+def hex_archive() -> Archive:
     return Archive(examples.hexarchivefile)
 
 
 @pytest.fixture(scope="module")
-def all_solid_cells_archive():
+def all_solid_cells_archive() -> Archive:
     return Archive(os.path.join(TESTFILES_PATH, "all_solid_cells.cdb"))
 
 
 @pytest.fixture(scope="module")
-def all_solid_cells_archive_linear():
-    return Archive(
-        os.path.join(TESTFILES_PATH, "all_solid_cells.cdb"), force_linear=True
-    )
+def all_solid_cells_archive_linear() -> Archive:
+    return Archive(os.path.join(TESTFILES_PATH, "all_solid_cells.cdb"), force_linear=True)
 
 
-@pytest.mark.parametrize(
-    "array",
-    (
-        np.arange(1, 10, dtype=np.int32),
-        np.array([1, 5, 10, 20, 40, 80], dtype=np.int32),
-        np.array([1, 2, 3, 10, 20, 40, 51, 52, 53], dtype=np.int32),
-        np.array([1, 2, 3, 10, 20, 40], dtype=np.int32),
-        np.array([10, 20, 40, 50, 51, 52], dtype=np.int32),
-    ),
-)
-def test_cython_cmblock(array):
-    """Simply verify it's identical to the prototype python code"""
-    assert np.allclose(proto_cmblock(array), _archive.cmblock_items_from_array(array))
-
-
-def test_load_dat():
-    arch = Archive(DAT_FILE, read_parameters=True)
+def test_load_dat() -> None:
+    arch = Archive(DAT_FILE)
     assert arch.n_node == 1263  # through inspection of the dat file
     assert arch.n_elem == 160  # through inspection of the dat file
-    assert "Panelflattern" in arch.parameters["_wb_userfiles_dir"]
 
 
-def test_repr(hex_archive):
+def test_repr(hex_archive: Archive) -> None:
     assert f"{hex_archive.n_node}" in str(hex_archive)
     assert f"{hex_archive.n_elem}" in str(hex_archive)
 
 
 @skip_plotting
-def test_plot(hex_archive):
+def test_plot(hex_archive: Archive) -> None:
     cpos = hex_archive.plot(return_cpos=True)
     assert isinstance(cpos, pv.CameraPosition)
 
 
-def test_read_mesh200():
+def test_read_mesh200() -> None:
     archive = Archive(os.path.join(TESTFILES_PATH, "mesh200.cdb"))
     assert archive.grid.n_cells == 1000
 
 
-def test_archive_init(hex_archive):
-    assert isinstance(hex_archive._raw, dict)
+def test_archive_init(hex_archive: Archive) -> None:
+    assert isinstance(hex_archive._archive, _reader.Archive)
     assert isinstance(hex_archive.grid, pv.UnstructuredGrid)
 
     assert hex_archive._nblock_start > 0
     assert hex_archive._nblock_end > hex_archive._nblock_start
 
 
-def test_parse_vtk(hex_archive):
+def test_parse_vtk(hex_archive: Archive) -> None:
     grid = hex_archive.grid
     assert grid.points.size
     assert grid.cells.size
     assert "ansys_node_num" in grid.point_data
 
     with pytest.raises(TypeError):
-        hex_archive._parse_vtk(allowable_types=-1)
+        hex_archive._parse_vtk(allowable_types=-1)  # type: ignore
 
     with pytest.raises(TypeError):
-        hex_archive._parse_vtk(allowable_types=3.0)
+        hex_archive._parse_vtk(allowable_types=3.0)  # type: ignore
 
 
-def test_invalid_archive(tmpdir, hex_archive):
-    nblock_filename = str(tmpdir.mkdir("tmpdir").join("nblock.cdb"))
+def test_invalid_archive(tmp_path: Path, hex_archive: Archive) -> None:
+    nblock_filename = tmp_path / "nblock.cdb"
     mapdl_archive.write_nblock(nblock_filename, hex_archive.nnum, hex_archive.nodes)
 
     archive = Archive(nblock_filename)
-    assert archive.grid is None
+    assert archive.grid.n_cells == 0
 
 
-def test_write_angle(tmpdir, hex_archive):
-    nblock_filename = str(tmpdir.mkdir("tmpdir").join("nblock.cdb"))
+def test_write_angle(tmp_path: Path, hex_archive: Archive) -> None:
+    nblock_filename = tmp_path / "nblock.cdb"
     mapdl_archive.write_nblock(
         nblock_filename, hex_archive.nnum, hex_archive.nodes, hex_archive.node_angles
     )
@@ -179,7 +124,7 @@ def test_write_angle(tmpdir, hex_archive):
     assert np.allclose(archive.nodes, hex_archive.nodes)
 
 
-def test_missing_midside():
+def test_missing_midside() -> None:
     allowable_types = [45, 95, 185, 186, 92, 187]
     archive_file = os.path.join(TESTFILES_PATH, "mixed_missing_midside.cdb")
     archive = Archive(archive_file, allowable_types=allowable_types)
@@ -187,28 +132,27 @@ def test_missing_midside():
     assert not np.any(archive.grid.celltypes == CellType.TETRA)
 
 
-def test_missing_midside_write(tmpdir):
+def test_missing_midside_write(tmp_path: Path) -> None:
     allowable_types = [45, 95, 185, 186, 92, 187]
     archive_file = os.path.join(TESTFILES_PATH, "mixed_missing_midside.cdb")
     archive = Archive(archive_file, allowable_types=allowable_types)
 
-    filename = str(tmpdir.join("tmp.cdb"))
+    filename = tmp_path / "tmp.cdb"
     with pytest.raises(RuntimeError, match="Unsupported element types"):
         mapdl_archive.save_as_archive(filename, archive.grid, exclude_missing=True)
 
-    mapdl_archive.save_as_archive(
-        filename, archive.grid, exclude_missing=True, reset_etype=True
-    )
+    mapdl_archive.save_as_archive(filename, archive.grid, exclude_missing=True, reset_etype=True)
     archive_new = Archive(filename)
 
     with pytest.raises(TypeError, match="must be an UnstructuredGrid"):
         mapdl_archive.save_as_archive(filename, [1, 2, 3])
 
 
-def test_writehex(tmpdir, hex_archive):
-    filename = str(tmpdir.mkdir("tmpdir").join("tmp.cdb"))
+def test_writehex(tmp_path: Path, hex_archive: Archive) -> None:
+    filename = tmp_path / "tmp.cdb"
     mapdl_archive.save_as_archive(filename, hex_archive.grid)
     archive_new = Archive(filename)
+
     assert np.allclose(hex_archive.grid.points, archive_new.grid.points)
     assert np.allclose(
         hex_archive.grid.cell_connectivity,
@@ -228,8 +172,8 @@ def test_writehex(tmpdir, hex_archive):
         )
 
 
-def test_write_voxel(tmpdir):
-    filename = str(tmpdir.join("tmp.cdb"))
+def test_write_voxel(tmp_path: Path) -> None:
+    filename = tmp_path / "tmp.cdb"
     grid = pv.ImageData(dimensions=(10, 10, 10))
     mapdl_archive.save_as_archive(filename, grid)
 
@@ -239,9 +183,9 @@ def test_write_voxel(tmpdir):
     assert archive.grid.n_cells, grid.n_cells
 
 
-def test_writesector(tmpdir):
+def test_writesector(tmp_path: Path) -> None:
     archive = Archive(examples.sector_archive_file)
-    filename = str(tmpdir.mkdir("tmpdir").join("tmp.cdb"))
+    filename = tmp_path / "tmp.cdb"
     mapdl_archive.save_as_archive(filename, archive.grid)
     archive_new = Archive(filename)
 
@@ -249,13 +193,13 @@ def test_writesector(tmpdir):
     assert np.allclose(archive.grid.cells, archive_new.grid.cells)
 
 
-def test_writehex_missing_elem_num(tmpdir, hex_archive):
+def test_writehex_missing_elem_num(tmp_path: Path, hex_archive: Archive) -> None:
     grid = hex_archive.grid
     grid.cell_data["ansys_elem_num"][:10] = -1
     grid.cell_data["ansys_etype"] = np.ones(grid.number_of_cells) * -1
     grid.cell_data["ansys_elem_type_num"] = np.ones(grid.number_of_cells) * -1
 
-    filename = str(tmpdir.mkdir("tmpdir").join("tmp.cdb"))
+    filename = tmp_path / "tmp.cdb"
     mapdl_archive.save_as_archive(filename, grid)
     archive_new = Archive(filename)
 
@@ -263,25 +207,25 @@ def test_writehex_missing_elem_num(tmpdir, hex_archive):
     assert np.allclose(hex_archive.grid.cells, archive_new.grid.cells)
 
 
-def test_writehex_missing_node_num(tmpdir, hex_archive):
+def test_writehex_missing_node_num(tmp_path: Path, hex_archive: Archive) -> None:
     hex_archive.grid.point_data["ansys_node_num"][:-1] = -1
 
-    filename = str(tmpdir.mkdir("tmpdir").join("tmp.cdb"))
+    filename = tmp_path / "tmp.cdb"
     mapdl_archive.save_as_archive(filename, hex_archive.grid)
     archive_new = Archive(filename)
     assert np.allclose(hex_archive.grid.points.shape, archive_new.grid.points.shape)
     assert np.allclose(hex_archive.grid.cells.size, archive_new.grid.cells.size)
 
 
-def test_write_non_ansys_grid(tmpdir):
+def test_write_non_ansys_grid(tmp_path: Path) -> None:
     grid = pv.UnstructuredGrid(pyvista_examples.hexbeamfile)
     del grid.point_data["sample_point_scalars"]
     del grid.cell_data["sample_cell_scalars"]
-    archive_file = str(tmpdir.mkdir("tmpdir").join("tmp.cdb"))
+    archive_file = tmp_path / "tmp.cdb"
     mapdl_archive.save_as_archive(archive_file, grid)
 
 
-def test_read_complex_archive(all_solid_cells_archive):
+def test_read_complex_archive(all_solid_cells_archive: Archive) -> None:
     nblock_expected = np.array(
         [
             [3.7826539829200e00, 1.2788958692644e00, -1.0220880953640e00],
@@ -341,24 +285,26 @@ def test_read_complex_archive(all_solid_cells_archive):
     assert np.allclose(nblock_expected, all_solid_cells_archive.nodes)
 
     grid = all_solid_cells_archive.grid
-    assert grid.number_of_cells == 4
+    assert grid.n_cells == 4
     assert np.unique(grid.celltypes).size == 4
     assert np.all(grid.celltypes > 20)
 
 
-def test_read_complex_archive_linear(all_solid_cells_archive_linear):
+def test_read_complex_archive_linear(all_solid_cells_archive_linear: Archive) -> None:
     grid = all_solid_cells_archive_linear.grid
     assert np.all(grid.celltypes < 20)
 
 
 @pytest.mark.parametrize("celltype", QUADRATIC_CELL_TYPES)
-def test_write_quad_complex_archive(tmpdir, celltype, all_solid_cells_archive):
+def test_write_quad_complex_archive(
+    tmp_path: Path, celltype: CellType, all_solid_cells_archive: Archive
+) -> None:
     grid = all_solid_cells_archive.grid
     mask = grid.celltypes == celltype
     assert mask.any()
     grid = grid.extract_cells(mask)
 
-    tmp_archive_file = str(tmpdir.mkdir("tmpdir").join("tmp.cdb"))
+    tmp_archive_file = tmp_path / "tmp.cdb"
 
     mapdl_archive.save_as_archive(tmp_archive_file, grid)
     new_archive = Archive(tmp_archive_file)
@@ -367,14 +313,16 @@ def test_write_quad_complex_archive(tmpdir, celltype, all_solid_cells_archive):
 
 
 @pytest.mark.parametrize("celltype", LINEAR_CELL_TYPES)
-def test_write_lin_archive(tmpdir, celltype, all_solid_cells_archive_linear):
+def test_write_lin_archive(
+    tmp_path: Path, celltype: CellType, all_solid_cells_archive_linear: Archive
+) -> None:
     linear_grid = all_solid_cells_archive_linear.grid
 
     mask = linear_grid.celltypes == celltype
     assert mask.any()
     linear_grid = linear_grid.extract_cells(mask)
 
-    tmp_archive_file = str(tmpdir.mkdir("tmpdir").join("tmp.cdb"))
+    tmp_archive_file = tmp_path / "tmp.cdb"
 
     mapdl_archive.save_as_archive(tmp_archive_file, linear_grid)
     new_archive = Archive(tmp_archive_file)
@@ -382,21 +330,23 @@ def test_write_lin_archive(tmpdir, celltype, all_solid_cells_archive_linear):
 
 
 @pytest.mark.parametrize("as_array", [False, True])
-def test_write_component(tmpdir, as_array):
+def test_write_component(tmp_path: Path, as_array: bool) -> None:
     items = [1, 20, 50, 51, 52, 53]
-    if as_array:
-        items = np.asarray(items)
-    filename = str(tmpdir.mkdir("tmpdir").join("tmp.cdb"))
+    filename = tmp_path / "tmp.cdb"
 
     comp_name = "TEST"
-    mapdl_archive.write_cmblock(filename, items, comp_name, "node")
+    if as_array:
+        mapdl_archive.write_cmblock(filename, items, comp_name, "node")
+    else:
+        mapdl_archive.write_cmblock(filename, np.array(items), comp_name, "node")
+
     archive = Archive(filename)
     assert np.allclose(archive.node_components[comp_name], items)
 
 
-def test_write_component_edge_case(tmpdir):
+def test_write_component_edge_case(tmp_path: Path) -> None:
     items = np.arange(2, 34, step=2)
-    filename = str(tmpdir.mkdir("tmpdir").join("tmp.cdb"))
+    filename = tmp_path / "tmp.cdb"
 
     comp_name = "TEST"
     mapdl_archive.write_cmblock(filename, items, comp_name, "node")
@@ -407,19 +357,14 @@ def test_write_component_edge_case(tmpdir):
         mapdl_archive.write_cmblock(filename, items, comp_name, "FOO")
 
 
-def test_read_parm():
+def test_read_parm() -> None:
     filename = os.path.join(TESTFILES_PATH, "parm.cdb")
-    archive = Archive(filename)
-    with pytest.raises(AttributeError):
-        archive.parameters
 
-    archive = Archive(filename, read_parameters=True)
-    assert len(archive.parameters) == 2
-    for parm in archive.parameters:
-        assert isinstance(archive.parameters[parm], np.ndarray)
+    with pytest.raises(RuntimeError, match="deprecated"):
+        archive = Archive(filename, read_parameters=True)
 
 
-def test_read_wb_nblock():
+def test_read_wb_nblock() -> None:
     expected = np.array(
         [
             [9.89367578e-02, -8.07092192e-04, 8.53764953e00],
@@ -430,10 +375,12 @@ def test_read_wb_nblock():
     filename = os.path.join(TESTFILES_PATH, "workbench_193.cdb")
     archive = Archive(filename)
     assert np.allclose(archive.nodes, expected)
+
+    assert archive.node_angles is not None
     assert np.allclose(archive.node_angles, 0)
 
 
-def test_read_hypermesh():
+def test_read_hypermesh() -> None:
     expected = np.array(
         [
             [-6.01203, 2.98129, 2.38556],
@@ -450,75 +397,54 @@ def test_read_hypermesh():
     assert np.allclose(archive.nodes[:6], expected)
 
 
-@pytest.mark.parametrize("angles", [True, False])
-def test_cython_write_nblock(hex_archive, tmpdir, angles):
-    nblock_filename = str(tmpdir.mkdir("tmpdir").join("nblock.inp"))
-
-    if angles:
-        _archive.py_write_nblock(
-            nblock_filename,
-            hex_archive.nnum,
-            hex_archive.nnum[-1],
-            hex_archive.nodes,
-            hex_archive.node_angles,
-        )
-    else:
-        _archive.py_write_nblock(
-            nblock_filename,
-            hex_archive.nnum,
-            hex_archive.nnum[-1],
-            hex_archive.nodes,
-            np.empty((0, 0)),
-        )
-
-    tmp_archive = Archive(nblock_filename)
-    assert np.allclose(hex_archive.nnum, tmp_archive.nnum)
-    assert np.allclose(hex_archive.nodes, tmp_archive.nodes)
-    if angles:
-        assert np.allclose(hex_archive.node_angles, tmp_archive.node_angles)
-
-
 @pytest.mark.parametrize("has_angles", [True, False])
 @pytest.mark.parametrize("dtype", [np.float32, np.float64])
-def test_write_nblock(hex_archive, tmpdir, dtype, has_angles):
-    nblock_filename = str(tmpdir.mkdir("tmpdir").join("nblock.inp"))
+def test_write_nblock(
+    hex_archive: Archive,
+    tmp_path: Path,
+    dtype: np.dtype,  # type: ignore
+    has_angles: bool,
+) -> None:
+    nblock_filename = tmp_path / "nblock.inp"
 
     nodes = hex_archive.nodes.astype(dtype)
     if has_angles:
         angles = hex_archive.node_angles
     else:
         angles = None
-    archive.write_nblock(nblock_filename, hex_archive.nnum, nodes, angles, mode="w")
+    mapdl_archive.write_nblock(nblock_filename, hex_archive.nnum, nodes, angles, mode="w")
 
     tmp_archive = Archive(nblock_filename)
     assert np.allclose(hex_archive.nnum, tmp_archive.nnum)
     assert np.allclose(hex_archive.nodes, tmp_archive.nodes)
+    assert hex_archive.node_angles is not None
+    assert tmp_archive.node_angles is not None
     if has_angles:
         assert np.allclose(hex_archive.node_angles, tmp_archive.node_angles)
 
 
 @pytest.mark.parametrize("sig_digits", [8, 18])
-def test_write_nblock_sig_digits(hex_archive, tmpdir, sig_digits):
-    nblock_filename = str(tmpdir.mkdir("tmpdir").join("nblock.inp"))
+def test_write_nblock_sig_digits(hex_archive: Archive, tmp_path: Path, sig_digits: int) -> None:
+    nblock_filename = tmp_path / "nblock.inp"
 
     nodes = hex_archive.nodes
     angles = hex_archive.node_angles
     with pytest.raises(ValueError, match="sig_digits"):
-        archive.write_nblock(
-            nblock_filename, hex_archive.nnum, nodes, angles, sig_digits=-1
-        )
+        mapdl_archive.write_nblock(nblock_filename, hex_archive.nnum, nodes, angles, sig_digits=-1)
 
-    archive.write_nblock(
+    mapdl_archive.write_nblock(
         nblock_filename, hex_archive.nnum, nodes, angles, sig_digits=sig_digits
     )  # more than 18 fails
     tmp_archive = Archive(nblock_filename)
     assert np.allclose(hex_archive.nnum, tmp_archive.nnum)
     assert np.allclose(hex_archive.nodes, tmp_archive.nodes)
+    assert hex_archive.node_angles is not None
+    assert tmp_archive.node_angles is not None
     assert np.allclose(hex_archive.node_angles, tmp_archive.node_angles)
 
 
-def test_cython_write_eblock(hex_archive, tmpdir):
-    filename = str(tmpdir.mkdir("tmpdir").join("eblock.inp"))
+def test_write_eblock(hex_archive: Archive, tmp_path: Path) -> None:
+    filename = str(tmp_path / "eblock.inp")
 
     etype = np.ones(hex_archive.n_elem, np.int32)
     typenum = hex_archive.etype
@@ -530,22 +456,24 @@ def test_cython_write_eblock(hex_archive, tmpdir):
     nodenum = hex_archive.nnum
 
     cells, offset = hex_archive.grid.cell_connectivity, hex_archive.grid.offset
-    _archive.py_write_eblock(
+    _archive.write_eblock(
         filename,
+        hex_archive.enum.size,
         hex_archive.enum,
         etype,
         hex_archive.material_type,
         np.ones(hex_archive.n_elem, np.int32),
         elem_nnodes,
-        cells.astype(np.int32, copy=False),
-        offset.astype(np.int32, copy=False),
         hex_archive.grid.celltypes,
+        offset,
+        cells,
         typenum,
         nodenum,
+        "w",
     )
 
 
-def test_rlblock_prior_to_nblock():
+def test_rlblock_prior_to_nblock() -> None:
     # test edge case where RLBLOCK is immediately prior to the NBLOCK
     filename = os.path.join(TESTFILES_PATH, "ErnoRadiation.cdb")
     archive = Archive(filename)
@@ -553,7 +481,7 @@ def test_rlblock_prior_to_nblock():
     assert archive.n_elem == 36
 
 
-def test_etblock():
+def test_etblock() -> None:
     # test edge case where RLBLOCK is immediately prior to the NBLOCK
     filename = os.path.join(TESTFILES_PATH, "etblock.cdb")
     archive = Archive(filename)
@@ -561,18 +489,16 @@ def test_etblock():
     assert archive.n_elem == 1
 
 
-def test_overwrite_nblock(tmpdir, hex_archive):
+def test_overwrite_nblock(tmp_path: Path, hex_archive: Archive) -> None:
     # ensure that we capture the entire NBLOCK
     with open(hex_archive._filename, "rb") as fid:
         fid.seek(hex_archive._nblock_start)
-        nblock_txt = fid.read(
-            hex_archive._nblock_end - hex_archive._nblock_start
-        ).decode()
+        nblock_txt = fid.read(hex_archive._nblock_end - hex_archive._nblock_start).decode()
 
     assert nblock_txt.startswith("NBLOCK")
     assert nblock_txt.splitlines()[-1].endswith("-1,")
 
-    filename = str(tmpdir.mkdir("tmpdir").join("tmp.cdb"))
+    filename = tmp_path / "tmp.cdb"
     nodes = np.random.random(hex_archive.nodes.shape)
     hex_archive.overwrite_nblock(
         filename,
@@ -586,37 +512,11 @@ def test_overwrite_nblock(tmpdir, hex_archive):
     assert np.allclose(hex_archive.grid.cells.size, archive_new.grid.cells.size)
 
 
-class TestPathlibFilename:
-    def test_pathlib_filename_property(self, pathlib_archive):
-        assert isinstance(pathlib_archive.pathlib_filename, pathlib.Path)
-
-    def test_filename_property_is_string(self, pathlib_archive):
-        filename = TESTFILES_PATH_PATHLIB / "ErnoRadiation.cdb"
-        a = Archive(filename)
-        assert isinstance(a.filename, str)
-
-    def test_filename_setter_pathlib(self, pathlib_archive):
-        with pytest.raises(AttributeError):
-            pathlib_archive.filename = pathlib.Path("dummy2")
-
-    def test_filename_setter_string(self, pathlib_archive):
-        with pytest.raises(AttributeError):
-            pathlib_archive.filename = "dummy2"
+def test_pathlib_filename_property(pathlib_archive: Archive) -> None:
+    assert isinstance(pathlib_archive.pathlib_filename, pathlib.Path)
 
 
-def test_save_as_numpy(tmpdir, hex_archive):
-    """Test saving to and loading from a npz file."""
-    path = str(tmpdir.join("data.npz"))
-    hex_archive.save_as_numpy(path)
-    hex_in = Archive(path)
-
-    assert hex_archive._raw.keys() == hex_in._raw.keys()
-
-    for key, value in hex_archive._raw.items():
-        if isinstance(value, np.ndarray):
-            assert np.allclose(value, hex_in._raw[key])
-        else:
-            if isinstance(value, dict):
-                compare_dicts_with_arrays(value, hex_in._raw[key])
-            else:
-                assert value == hex_in._raw[key]
+def test_filename_property_is_string(pathlib_archive: Archive) -> None:
+    filename = TESTFILES_PATH_PATHLIB / "ErnoRadiation.cdb"
+    arch = Archive(filename)
+    assert isinstance(arch.filename, str)

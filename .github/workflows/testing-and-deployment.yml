@@ -1,115 +1,67 @@
-name: Actions
-
-# repo specific gh actions
-env:
-  SHELLOPTS: 'errexit:pipefail'
-  PACKAGE_NAME: mapdl-archive
-  PYVISTA_OFF_SCREEN: true
+name: Build and upload
 
 on:
   pull_request:
   push:
     tags:
-      - "*"
+    - '*'
     branches:
-      - main
+    - main
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  build:
-    name: Build and Test
+  build_wheels:
+    name: Build wheels on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-14, macos-13]
 
     steps:
-      - uses: actions/checkout@v4
+    - uses: actions/checkout@v4
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-          cache: 'pip'
-          cache-dependency-path: 'requirements/*.txt'
+    - name: Build wheels
+      uses: pypa/cibuildwheel@v2.19.2
 
-      - name: Build ManyLinux wheel
-        if: ${{ runner.os == 'Linux' }}
-        run: |
-          docker run \
-               --rm -v `pwd`:/io \
-               quay.io/pypa/manylinux2014_x86_64 \
-               /io/.ci/build_wheels.sh ${{ matrix.python-version }}
+    - uses: actions/upload-artifact@v4
+      with:
+        name: mapdl-archive-wheels-${{ matrix.os }}
+        path: ./wheelhouse/*.whl
 
-      - name: Build wheel on Windows
-        if: ${{ runner.os == 'Windows' }}
-        run: |
-          pip install build
-          python -m build
-
-      - name: Validate wheel
-        run: |
-          pip install twine
-          twine check dist/*
-
-      - name: Install on Linux
-        if: ${{ runner.os == 'Linux' }}
-        run: |
-          pip install wheel
-          pip install dist/*.whl
-          pip list
-
-      - name: Install on Windows Powershell
-        if: ${{ runner.os == 'Windows' }}
-        run: |
-          pip install wheel
-          pip install (get-item .\dist\*.whl)
-          pip list
-
-      - name: Setup headless display
-        uses: pyvista/setup-headless-display-action@v2
-
-      - name: Install test requirements
-        run: pip install -r requirements/requirements_test.txt
-
-      - name: Test
-        run: pytest -v tests/ --durations=0
-
-      - name: Upload wheel
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ env.PACKAGE_NAME }}-${{ runner.os }}-${{ matrix.python-version }}
-          path: dist/
-          retention-days: 7
-
-  mac_build:
-    if: github.event_name == 'push' && contains(github.ref, 'refs/tags')
-    name: Build wheels on MacOS
-    runs-on: macos-latest
-
+  build_sdist:
+    name: Build source distribution
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+    - uses: actions/checkout@v4
 
-      - name: Build wheels
-        uses: pypa/cibuildwheel@v2.17.0
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
 
-      - name: List generated wheels
-        run: |
-          ls ./wheelhouse/*
+    - name: Build sdist
+      run: pipx run build --sdist
 
-      - uses: actions/upload-artifact@v4
-        with:
-          path: ./wheelhouse/*.whl
-          name: mapdl-archive-wheel-${{ matrix.os }}
+    - name: Install from sdist
+      run: pip install dist/mapdl*.tar.gz
+
+    - name: Run tests
+      run: |
+        pip install pytest
+        pytest -x
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: mapdl-archive-sdist
+        path: dist/*.tar.gz
 
   release:
     name: Release
     if: github.event_name == 'push' && contains(github.ref, 'refs/tags')
-    needs: [build, mac_build]
+    needs: [build_wheels, build_sdist]
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -117,19 +69,19 @@ jobs:
     permissions:
       id-token: write  # this permission is mandatory for trusted publishing
     steps:
-      - uses: actions/download-artifact@v4
-      - name: Display structure of downloaded files
-        run: ls -R
-      - name: Flatten directory structure
-        run: |
-          mkdir -p dist/
-          find . -name '*.whl' -exec mv {} dist/ \;
-          find . -name '*.tar.gz' -exec mv {} dist/ \;
-      - name: Publish package distributions to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          generate_release_notes: true
-          files: |
-            ./**/*.whl
+    - uses: actions/download-artifact@v4
+    - name: Flatten directory structure
+      run: |
+        mkdir -p dist/
+        find . -name '*.whl' -exec mv {} dist/ \;
+        find . -name '*.tar.gz' -exec mv {} dist/ \;
+    - name: List artifacts
+      run: ls -R
+    - name: Publish package distributions to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
+    - name: Release
+      uses: softprops/action-gh-release@v2
+      with:
+        generate_release_notes: true
+        files: |
+          ./dist/*.whl

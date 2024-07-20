@@ -1,17 +1,19 @@
 """Contains the Mesh class used by Archive."""
 
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union, cast
 import warnings
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple, TypeVar, Union, cast
 
 import numpy as np
-import numpy.typing as npt
-from pyvista import PolyData, UnstructuredGrid
+from numpy.typing import NDArray
+from pyvista import ID_TYPE, CellArray
+from pyvista.core.pointset import PolyData, UnstructuredGrid
+from vtkmodules.util.numpy_support import numpy_to_vtk
 
-from mapdl_archive import _reader, _relaxmidside
+from mapdl_archive import _archive, _reader
 from mapdl_archive.elements import ETYPE_MAP
 
-COMP_DICT = Dict[str, npt.NDArray[np.int32]]
+COMP_DICT = Dict[str, NDArray[np.int32]]
 
 INVALID_ALLOWABLE_TYPES = TypeError(
     "`allowable_types` must be an array of ANSYS element types from 1 and 300"
@@ -77,8 +79,10 @@ TARGE170_MAP = {
     "POINT": 1,  # Point
 }
 
+T = TypeVar("T", np.float32, np.float64)
 
-def unique_rows(a: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+
+def unique_rows(a: NDArray[T]) -> Tuple[NDArray[T], NDArray[int], NDArray[int]]:
     """Return unique rows of an array and the indices of those rows."""
     if not a.flags.c_contiguous:
         a = np.ascontiguousarray(a)
@@ -86,7 +90,7 @@ def unique_rows(a: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     b = a.view(np.dtype((np.void, a.dtype.itemsize * a.shape[1])))
     _, idx, idx2 = np.unique(b, True, True)
 
-    return a[idx], idx, idx2
+    return a[idx], idx, idx2.ravel()
 
 
 class Mesh:
@@ -94,61 +98,47 @@ class Mesh:
 
     def __init__(
         self,
-        nnum: npt.NDArray[np.int32],
-        nodes: npt.NDArray[np.float64],
-        elem: npt.NDArray[np.int32],
-        elem_off: npt.NDArray[np.int32],
-        ekey: npt.NDArray[np.int32],
-        rnum: npt.NDArray[np.int64],
+        nnum: NDArray[np.int32],
+        nodes: NDArray[np.float64],
+        node_angles: NDArray[np.float64],
+        elem: NDArray[np.int32],
+        elem_off: NDArray[np.int32],
+        ekey: NDArray[np.int32],
+        rnum: NDArray[np.int64],
         node_comps: COMP_DICT = {},
         elem_comps: COMP_DICT = {},
         rdat: List[List[float]] = [],
         keyopt: Dict[int, List[List[int]]] = {},
     ):
         """Initialize the mesh."""
-        self._etype: Optional[npt.NDArray[np.int32]] = (
-            None  # internal element type reference
-        )
+        self._etype: Optional[NDArray[np.int32]] = None  # internal element type reference
         self._grid: Optional[UnstructuredGrid] = None
         self._surf_cache: Optional[PolyData] = None  # cached external surface
-        self._enum: Optional[npt.NDArray[np.int32]] = None  # cached element numbering
-        self._etype_cache: Optional[npt.NDArray[np.int32]] = (
-            None  # cached ansys ETYPE num
-        )
-        self._rcon: Optional[npt.NDArray[np.int32]] = (
-            None  # ansys element real constant
-        )
-        self._mtype: Optional[npt.NDArray[np.int32]] = (
-            None  # cached ansys material type
-        )
-        self._node_angles: Optional[npt.NDArray[np.float64]] = (
-            None  # cached node angles
-        )
-        self._node_coord: Optional[npt.NDArray[np.float64]] = (
-            None  # cached node coordinates
-        )
-        self._cached_elements: Optional[List[npt.NDArray[np.int32]]] = None
-        self._secnum: Optional[npt.NDArray[np.int32]] = None  # cached section number
-        self._esys: Optional[npt.NDArray[np.int32]] = (
-            None  # cached element coordinate system
-        )
-        self._etype_id: Optional[npt.NDArray[np.int32]] = None  # cached element type id
+        self._enum: Optional[NDArray[np.int32]] = None  # cached element numbering
+        self._etype_cache: Optional[NDArray[np.int32]] = None  # cached ansys ETYPE num
+        self._rcon: Optional[NDArray[np.int32]] = None  # ansys element real constant
+        self._mtype: Optional[NDArray[np.int32]] = None  # cached ansys material type
+        self._cached_elements: Optional[List[NDArray[np.int32]]] = None
+        self._secnum: Optional[NDArray[np.int32]] = None  # cached section number
+        self._esys: Optional[NDArray[np.int32]] = None  # cached element coordinate system
+        self._etype_id: Optional[NDArray[np.int32]] = None  # cached element type id
 
         # Always set on init
-        self._nnum: npt.NDArray[np.int32] = nnum
-        self._nodes: npt.NDArray[np.float64] = nodes
-        self._elem: npt.NDArray[np.int32] = elem
-        self._elem_off: npt.NDArray[np.int32] = elem_off
-        self._ekey: npt.NDArray[np.int32] = ekey
+        self._nnum: NDArray[np.int32] = nnum
+        self._nodes: NDArray[np.float64] = nodes
+        self._node_angles: NDArray[np.float64] = node_angles
+        self._elem: NDArray[np.int32] = elem
+        self._elem_off: NDArray[np.int32] = elem_off
+        self._ekey: NDArray[np.int32] = ekey
 
         # optional
         self._node_comps: COMP_DICT = node_comps
         self._elem_comps: COMP_DICT = elem_comps
         self._rdat: List[List[float]] = rdat
-        self._rnum: npt.NDArray[np.int64] = rnum
+        self._rnum: NDArray[np.int64] = rnum
         self._keyopt: Dict[int, List[List[int]]] = keyopt
-        self._tshape: Optional[npt.NDArray[np.int32]] = None
-        self._tshape_key: Optional[npt.NDArray[np.int32]] = None
+        self._tshape: Optional[NDArray[np.int32]] = None
+        self._tshape_key: Optional[NDArray[np.int32]] = None
 
     @property
     def _surf(self) -> PolyData:
@@ -162,6 +152,8 @@ class Mesh:
     @property
     def _has_nodes(self) -> bool:
         """Return ``True`` when has nodes."""
+        if self.nodes is None:
+            return False
         return bool(len(self.nodes))
 
     @property
@@ -177,7 +169,7 @@ class Mesh:
 
     def _parse_vtk(
         self,
-        allowable_types: Optional[List[Union[int, str]]] = None,
+        allowable_types: Optional[Union[List[str], List[int]]] = None,
         force_linear: bool = False,
         null_unallowed: bool = False,
         fix_midside: bool = True,
@@ -194,12 +186,12 @@ class Mesh:
         """
         if not self._has_nodes or not self._has_elements:
             # warnings.warn('Missing nodes or elements.  Unable to parse to vtk')
-            return
+            return UnstructuredGrid()
 
         etype_map = ETYPE_MAP
         if allowable_types is not None:
             try:
-                allowable_types_arr: npt.NDArray[np.int_] = np.asarray(allowable_types)
+                allowable_types_arr: NDArray[np.int_] = np.asarray(allowable_types)
             except Exception as e:
                 warnings.warn(f"{e}")
                 raise INVALID_ALLOWABLE_TYPES
@@ -215,7 +207,11 @@ class Mesh:
 
         # ANSYS element type to VTK map
         type_ref = np.empty(2 << 16, np.int32)  # 131072
-        type_ref[self._ekey[:, 0]] = etype_map[self._ekey[:, 1]]
+        try:
+            type_ref[self._ekey[:, 0]] = etype_map[self._ekey[:, 1]]
+        except:
+            print(self._ekey[:, 1])  # (debugging)
+            raise
 
         if allowable_types is None or 200 in allowable_types:
             for etype_ind, etype in self._ekey:
@@ -232,15 +228,16 @@ class Mesh:
                     if etype_ind not in self.tshape_key:  # pragma: no cover
                         continue
                     tshape_num = cast(int, self.tshape_key[etype_ind])
-                    if (
-                        tshape_num >= 19
-                    ):  # weird bug when 'PILO' can be 99 instead of 19.
+                    if tshape_num >= 19:  # weird bug when 'PILO' can be 99 instead of 19.
                         tshape_num = 19
                     tshape_label = SHAPE_MAP[tshape_num]
                     type_ref[etype_ind] = TARGE170_MAP.get(tshape_label, 0)
 
-        offset, celltypes, cells = _reader.ans_vtk_convert(
-            self._elem, self._elem_off, type_ref, self.nnum, True
+        offset, celltypes, cells = _reader.ans_to_vtk(
+            self._elem,
+            self._elem_off,
+            type_ref,
+            self.nnum,
         )  # for reset_midside
 
         nodes, angles, nnum = self.nodes, self.node_angles, self.nnum
@@ -258,7 +255,16 @@ class Mesh:
             cells[cells < 0] = 0
             # cells[cells >= nodes.shape[0]] = 0  # fails when n_nodes < 20
 
-        grid = UnstructuredGrid(cells, celltypes, nodes, deep=True)
+        grid = UnstructuredGrid()
+        grid.points = nodes
+
+        # Warn when type mismatch as it results in copying setting cells
+        if cells.dtype != ID_TYPE:
+            warnings.warn(f"Mismatch between cell dtype {cells.dtype} and VTK ID_TYPE {ID_TYPE}")
+
+        vtk_cells = CellArray.from_arrays(offset, cells, deep=False)
+        vtk_cell_type = numpy_to_vtk(celltypes, deep=False)
+        grid.SetCells(vtk_cell_type, vtk_cells)
 
         # Store original ANSYS element and node information
         grid.point_data["ansys_node_num"] = nnum
@@ -271,12 +277,12 @@ class Mesh:
         # add components
         # Add element components to unstructured grid
         for key, item in self.element_components.items():
-            mask = np.in1d(self.enum, item, assume_unique=True)
+            mask = np.isin(self.enum, item, assume_unique=True)
             grid.cell_data[key] = mask
 
         # Add node components to unstructured grid
         for key, item in self.node_components.items():
-            mask = np.in1d(nnum, item, assume_unique=True)
+            mask = np.isin(nnum, item, assume_unique=True)
             grid.point_data[key] = mask
 
         # store node angles
@@ -314,7 +320,7 @@ class Mesh:
         return self._keyopt
 
     @property
-    def material_type(self) -> npt.NDArray[np.int32]:
+    def material_type(self) -> NDArray[np.int32]:
         """Return the material type index of each element in the archive.
 
         Examples
@@ -384,7 +390,7 @@ class Mesh:
         return self._node_comps
 
     @property
-    def elem_real_constant(self) -> npt.NDArray[np.int32]:
+    def elem_real_constant(self) -> NDArray[np.int32]:
         """Return the real constant reference for each element.
 
         Use the data within ``rlblock`` and ``rlblock_num`` to get the
@@ -411,7 +417,7 @@ class Mesh:
         return self._rcon
 
     @property
-    def etype(self) -> npt.NDArray[np.int32]:
+    def etype(self) -> NDArray[np.int32]:
         """Return the element type of each element.
 
         Examples
@@ -442,14 +448,14 @@ class Mesh:
         return self._etype
 
     @property
-    def _ans_etype(self) -> npt.NDArray[np.int32]:
+    def _ans_etype(self) -> NDArray[np.int32]:
         """Return field 1, the element type number."""
         if self._etype_cache is None:
             self._etype_cache = self._elem[self._elem_off[:-1] + 1]
         return self._etype_cache
 
     @property
-    def section(self) -> npt.NDArray[np.int32]:
+    def section(self) -> NDArray[np.int32]:
         """Return the section number.
 
         Examples
@@ -466,7 +472,7 @@ class Mesh:
             self._secnum = self._elem[self._elem_off[:-1] + 3]  # FIELD 3
         return self._secnum
 
-    def element_coord_system(self) -> npt.NDArray[np.int32]:
+    def element_coord_system(self) -> NDArray[np.int32]:
         """Return the element coordinate system number.
 
         Examples
@@ -484,7 +490,7 @@ class Mesh:
         return self._esys
 
     @property
-    def elem(self) -> List[npt.NDArray[np.int32]]:
+    def elem(self) -> List[NDArray[np.int32]]:
         """Return the list of elements containing raw element information.
 
         Each element contains 10 items plus the nodes belonging to the
@@ -521,7 +527,7 @@ class Mesh:
         return self._cached_elements
 
     @property
-    def enum(self) -> npt.NDArray[np.int32]:
+    def enum(self) -> NDArray[np.int32]:
         """Return the MAPDl element numbers.
 
         Examples
@@ -537,7 +543,7 @@ class Mesh:
         return self._enum
 
     @property
-    def nnum(self) -> npt.NDArray[np.int32]:
+    def nnum(self) -> NDArray[np.int32]:
         """Return the array of node numbers.
 
         Examples
@@ -551,7 +557,7 @@ class Mesh:
         return self._nnum
 
     @property
-    def ekey(self) -> npt.NDArray[np.int32]:
+    def ekey(self) -> NDArray[np.int32]:
         """Return the element type key.
 
         Array containing element type numbers in the first column and
@@ -588,7 +594,7 @@ class Mesh:
         return self._rdat
 
     @property
-    def rlblock_num(self) -> npt.NDArray[np.int64]:
+    def rlblock_num(self) -> NDArray[np.int64]:
         """Return the indices from the real constant data.
 
         Examples
@@ -602,7 +608,7 @@ class Mesh:
         return self._rnum
 
     @property
-    def nodes(self) -> npt.NDArray[np.float64]:
+    def nodes(self) -> NDArray[np.float64]:
         """Return the array of nodes of the mesh.
 
         Examples
@@ -619,12 +625,10 @@ class Mesh:
          [0.75 0.5  4.  ]
          [0.75 0.5  4.5 ]]
         """
-        if self._node_coord is None:
-            self._node_coord = np.ascontiguousarray(self._nodes[:, :3])
-        return self._node_coord
+        return self._nodes
 
     @property
-    def node_angles(self) -> npt.NDArray[np.float64]:
+    def node_angles(self) -> Optional[NDArray[np.float64]]:
         """Return the node angles from the archive file.
 
         Examples
@@ -642,8 +646,6 @@ class Mesh:
          [0.   0.   0.  ]]
 
         """
-        if self._node_angles is None:
-            self._node_angles = np.ascontiguousarray(self._nodes[:, 3:])
         return self._node_angles
 
     def __repr__(self) -> str:
@@ -661,7 +663,7 @@ class Mesh:
         filename: Union[str, Path],
         binary: bool = True,
         force_linear: bool = False,
-        allowable_types: Optional[List[Union[int, str]]] = None,
+        allowable_types: Optional[Union[List[int], List[str]]] = None,
         null_unallowed: bool = False,
     ) -> None:
         """Save the geometry as a vtk file.
@@ -697,7 +699,7 @@ class Mesh:
         file size.
 
         """
-        grid: UnstructuredGrid = self._parse_vtk(
+        grid = self._parse_vtk(
             allowable_types=allowable_types,
             force_linear=force_linear,
             null_unallowed=null_unallowed,
@@ -720,7 +722,7 @@ class Mesh:
         return len(self.enum)
 
     @property
-    def et_id(self) -> npt.NDArray[np.int32]:
+    def et_id(self) -> NDArray[np.int32]:
         """Element type id (ET) for each element."""
         if self._etype_id is None:
             etype_elem_id = self._elem_off[:-1] + 1
@@ -728,7 +730,7 @@ class Mesh:
         return self._etype_id
 
     @property
-    def tshape(self) -> npt.NDArray[np.int32]:
+    def tshape(self) -> NDArray[np.int32]:
         """Tshape of contact elements."""
         if self._tshape is None:
             shape_elem_id = self._elem_off[:-1] + 7
@@ -737,8 +739,8 @@ class Mesh:
 
     @property
     def tshape_key(
-        self, as_array=False
-    ) -> Union[npt.NDArray[np.int32], Dict[int, npt.NDArray[np.int32]]]:
+        self, as_array: bool = False
+    ) -> Union[NDArray[np.int32], Dict[int, NDArray[np.int32]]]:
         """Return a dictionary with the mapping between element type and element shape.
 
         TShape is only applicable to contact elements.
@@ -751,7 +753,14 @@ class Mesh:
         return {elem_id: tshape for elem_id, tshape in self._tshape_key}
 
 
-def fix_missing_midside(cells, nodes, celltypes, offset, angles, nnum):
+def fix_missing_midside(
+    cells: NDArray[np.int64],
+    nodes: NDArray[np.double],
+    celltypes: NDArray[np.uint8],
+    offset: NDArray[np.int64],
+    angles: Optional[NDArray[np.float64]],
+    nnum: NDArray[np.int32],
+) -> Tuple[NDArray[np.float64], Optional[NDArray[np.float64]], NDArray[np.int32]]:
     """Add missing midside nodes to cells.
 
     ANSYS sometimes does not add midside nodes, and this is denoted in
@@ -774,10 +783,11 @@ def fix_missing_midside(cells, nodes, celltypes, offset, angles, nnum):
 
     # Set new midside nodes directly between their edge nodes
     temp_nodes = nodes_new.copy()
-    _relaxmidside.reset_midside(cells, celltypes, offset, temp_nodes)
+    _archive.reset_midside(celltypes, cells, offset, temp_nodes)
 
     # merge midside nodes
-    unique_nodes, idx_a, idx_b = unique_rows(temp_nodes[nnodes:])
+    node_slice = temp_nodes[nnodes:]
+    unique_nodes, idx_a, idx_b = unique_rows(node_slice)
 
     # rewrite node numbers
     cells[mask] = idx_b + nnodes
@@ -793,7 +803,7 @@ def fix_missing_midside(cells, nodes, celltypes, offset, angles, nnum):
         new_angles = None
 
     # Add extra node numbers
-    nnum_new = np.empty(nnodes + nextra)
+    nnum_new = np.empty(nnodes + nextra, np.int32)
     nnum_new[:nnodes] = nnum
     nnum_new[nnodes:] = -1
     return nodes_new, new_angles, nnum_new

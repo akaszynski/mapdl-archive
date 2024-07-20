@@ -5,24 +5,26 @@ import logging
 import os
 import pathlib
 import shutil
-from typing import Dict, List, Optional, Sequence, Union, cast
+from typing import Any, Dict, List, Optional, Sequence, TypeVar, Union
 
 import numpy as np
-import numpy.typing as npt
-from pyvista import CellType, UnstructuredGrid
+from numpy.typing import NDArray
+from pyvista import ID_TYPE, CellType, UnstructuredGrid
 
 from mapdl_archive import _archive, _reader
 from mapdl_archive.mesh import Mesh
 
 # types
-NPArray_FLOAT32_64 = npt.NDArray[Union[np.float32, np.float64]]
-NPArray_FLOAT32 = npt.NDArray[np.float32]
-NPArray_FLOAT64 = npt.NDArray[np.float64]
+NPArray_FLOAT32 = NDArray[np.float32]
+NPArray_FLOAT64 = NDArray[np.float64]
 
 VTK_VOXEL = 11
 
 log = logging.getLogger(__name__)
 log.setLevel("CRITICAL")
+
+U = TypeVar("U", np.int32, np.int64)
+T = TypeVar("T", np.float32, np.float64)
 
 
 class Archive(Mesh):
@@ -38,8 +40,7 @@ class Archive(Mesh):
     Parameters
     ----------
     filename : string, pathlib.Path
-        Supports blocked MAPDL archive .cdb files or .npz written from this
-        class using :class:`Archive.save_as_numpy`.
+        Filename of block formatted cdb file
 
     read_parameters : bool, default: False
         Optionally read parameters from the archive file.
@@ -115,7 +116,7 @@ class Archive(Mesh):
         read_parameters: bool = False,
         parse_vtk: bool = True,
         force_linear: bool = False,
-        allowable_types: Optional[List[Union[str, int]]] = None,
+        allowable_types: Optional[Union[List[str], List[int]]] = None,
         null_unallowed: bool = False,
         verbose: bool = False,
         name: str = "",
@@ -125,45 +126,29 @@ class Archive(Mesh):
         self._read_parameters: bool = read_parameters
         self._filename: pathlib.Path = pathlib.Path(filename)
         self._name: str = name
-        if self.filename.endswith("npz"):
-            npz_file = np.load(self.filename, allow_pickle=True)
+        self._archive = _reader.Archive(
+            self.filename,
+            read_params=read_parameters,
+            debug=verbose,
+            read_eblock=read_eblock,
+        )
+        self._archive.read()
 
-            self._raw: _reader.ReadReturnDict = {
-                "rnum": npz_file["rnum"],
-                "rdat": npz_file["rdat"].tolist(),
-                "ekey": npz_file["ekey"],
-                "nnum": npz_file["nnum"],
-                "nodes": npz_file["nodes"],
-                "elem": npz_file["elem"],
-                "elem_off": npz_file["elem_off"],
-                "node_comps": npz_file["node_comps"].item(),
-                "elem_comps": npz_file["elem_comps"].item(),
-                "keyopt": npz_file["keyopt"].item(),
-                "parameters": npz_file["parameters"].item(),
-                "nblock_start": npz_file["nblock_start"],
-                "nblock_end": npz_file["nblock_end"],
-            }
-        else:
-            self._raw = _reader.read(
-                self.filename,
-                read_parameters=read_parameters,
-                debug=verbose,
-                read_eblock=read_eblock,
-            )
         super().__init__(
-            self._raw["nnum"],
-            self._raw["nodes"],
-            self._raw["elem"],
-            self._raw["elem_off"],
-            self._raw["ekey"],
-            self._raw["rnum"],
-            node_comps=self._raw["node_comps"],
-            elem_comps=self._raw["elem_comps"],
-            rdat=self._raw["rdat"],
-            keyopt=self._raw["keyopt"],
+            self._archive.nnum,
+            self._archive.nodes,
+            self._archive.node_angles,
+            self._archive.elem,
+            self._archive.elem_off,
+            np.array(self._archive.elem_type),
+            np.array(self._archive.rnum),
+            node_comps=self._archive.node_comps,
+            elem_comps=self._archive.elem_comps,
+            rdat=self._archive.rdat,
+            keyopt=self._archive.keyopt,
         )
 
-        self._allowable_types: Optional[list[Union[str, int]]] = allowable_types
+        self._allowable_types: Optional[Union[List[str], List[int]]] = allowable_types
         self._force_linear: bool = force_linear
         self._null_unallowed: bool = null_unallowed
 
@@ -181,26 +166,13 @@ class Archive(Mesh):
         return self._filename
 
     @property
-    def parameters(self) -> Dict[str, np.ndarray]:
+    def parameters(self) -> Dict[str, NDArray[np.double]]:
         """Return the parameters stored in the archive file.
 
-        Examples
-        --------
-        >>> import mapdl_archive
-        >>> from mapdl_archive import examples
-        >>> archive = mapdl_archive.Archive(
-        ...     examples.hexarchivefile, read_parameters=True
-        ... )
-        >>> archive.parameters
-        {}
+        Parameters have been deprecated.
 
         """
-        if not self._read_parameters:
-            raise AttributeError(
-                "No parameters read.  Read the archive again "
-                " with ``read_parameters=True``"
-            )
-        return self._raw["parameters"]
+        raise RuntimeError("Parameters have been deprecated.")
 
     def __repr__(self) -> str:
         """Return the representation of the archive."""
@@ -235,22 +207,21 @@ class Archive(Mesh):
           Z Bounds:     0.000e+00, 5.000e+00
           N Arrays:     13
         """
-        if self._grid is None:  # parse the grid using the cached parameters
+        # parse the grid using the cached parameters
+        if self._grid is None:
             self._grid = self._parse_vtk(
                 self._allowable_types, self._force_linear, self._null_unallowed
             )
         return self._grid
 
-    def plot(self, *args, **kwargs):
+    def plot(self, *args: Any, **kwargs: Any) -> Any:
         """Plot the mesh.
 
         See ``help(pyvista.plot)`` for all optional kwargs.
 
         """
         if self._grid is None:  # pragma: no cover
-            raise AttributeError(
-                "Archive must be parsed as a vtk grid.\n Set `parse_vtk=True`"
-            )
+            raise AttributeError("Archive must be parsed as a vtk grid.\n Set `parse_vtk=True`")
         kwargs.setdefault("color", "w")
         kwargs.setdefault("show_edges", True)
         return self.grid.plot(*args, **kwargs)
@@ -258,19 +229,26 @@ class Archive(Mesh):
     @property
     def _nblock_start(self) -> int:
         """Return the start of the node block in the original file."""
-        return self._raw["nblock_start"]
+        return self._archive.nblock_start
 
     @property
     def _nblock_end(self) -> int:
         """Return the end of the node block in the original file."""
-        return self._raw["nblock_end"]
+        return self._archive.nblock_end
 
-    def overwrite_nblock(self, filename, node_id, pos, angles=None, sig_digits=13):
+    def overwrite_nblock(
+        self,
+        filename: Union[str, pathlib.Path],
+        node_id: NDArray[int],
+        pos: NDArray[T],
+        angles: Optional[NDArray[T]] = None,
+        sig_digits: int = 13,
+    ) -> None:
         """Write out an archive file to disk while replacing its NBLOCK.
 
         Parameters
         ----------
-        filename : str or file handle
+        filename : str | pathlib.Path
             Filename to write node block to.
         node_id : numpy.ndarray
             ANSYS node numbers.
@@ -294,14 +272,13 @@ class Archive(Mesh):
         >>> archive.overwrite_nblock("new_archive.cdb", archive.nnum, new_nodes)
 
         """
+        filename = str(filename)
         with open(self._filename, "rb") as src_file, open(filename, "wb") as dest_file:
             # Copy the beginning of the file up to _nblock_start
             dest_file.write(src_file.read(self._nblock_start))
 
         # Write new nblock
-        write_nblock(
-            filename, node_id, pos, angles=angles, mode="a", sig_digits=sig_digits
-        )
+        write_nblock(filename, node_id, pos, angles=angles, mode="a", sig_digits=sig_digits)
 
         # Copy the rest of the original file
         with open(self._filename, "rb") as src_file, open(filename, "ab") as dest_file:
@@ -310,7 +287,7 @@ class Archive(Mesh):
 
             shutil.copyfileobj(src_file, dest_file)
 
-    def save_as_numpy(self, filename: str):
+    def save_as_numpy(self, filename: str) -> None:
         """Save this archive as a numpy "npz" file.
 
         This reduces the file size by around 50% compared with the Ansys
@@ -318,9 +295,9 @@ class Archive(Mesh):
 
         """
         if not filename.endswith("npz"):
-            raise ValueError("Filename should end with 'npz'")
+            raise ValueError("Filename must end with '.npz'")
 
-        np.savez(filename, **self._raw)  # type: ignore
+        raise RuntimeError("save_as_numpy as been deprecated")
 
 
 def save_as_archive(
@@ -443,9 +420,7 @@ def save_as_archive(
         grid = grid.cast_to_unstructured_grid()
 
     if not isinstance(grid, UnstructuredGrid):
-        raise TypeError(
-            f"``grid`` argument must be an UnstructuredGrid, not {type(grid)}"
-        )
+        raise TypeError(f"``grid`` argument must be an UnstructuredGrid, not {type(grid)}")
 
     allowable = []
     if include_solid_elements:
@@ -469,7 +444,7 @@ def save_as_archive(
         # VTK_QUADRATIC_QUAD
 
     # extract allowable cell types
-    mask = np.in1d(grid.celltypes, allowable)
+    mask = np.isin(grid.celltypes, allowable)
     if not mask.any():
         ucelltypes = np.unique(grid.celltypes)
         allowable.sort()
@@ -493,9 +468,7 @@ def save_as_archive(
     missing_mask = nodenum == -1
     if np.any(missing_mask):
         if not allow_missing:
-            raise RuntimeError(
-                'Missing node numbers.  Exiting due "allow_missing=False"'
-            )
+            raise RuntimeError('Missing node numbers.  Exiting due "allow_missing=False"')
         elif exclude_missing:
             log.info("Excluding missing nodes from archive file.")
             nodenum = nodenum.copy()
@@ -507,8 +480,7 @@ def save_as_archive(
             nadd = np.sum(nodenum == -1)
             end_num = start_num + nadd
             log.info(
-                "FEM missing some node numbers.  Adding node numbering "
-                "from %d to %d",
+                "FEM missing some node numbers.  Adding node numbering " "from %d to %d",
                 start_num,
                 end_num,
             )
@@ -520,12 +492,9 @@ def save_as_archive(
         enum = grid.cell_data["ansys_elem_num"]
     else:
         if not allow_missing:
-            raise RuntimeError(
-                'Missing node numbers. Exiting due "allow_missing=False"'
-            )
+            raise RuntimeError('Missing node numbers. Exiting due "allow_missing=False"')
         log.info(
-            "No ANSYS element numbers set in input. "
-            "Adding default range starting from %d",
+            "No ANSYS element numbers set in input. " "Adding default range starting from %d",
             enum_start,
         )
         enum = np.arange(1, ncells + 1, dtype=np.int32)
@@ -553,8 +522,7 @@ def save_as_archive(
         mtype = grid.cell_data["ansys_material_type"]
     else:
         log.info(
-            "No ANSYS element numbers set in input.  "
-            "Adding default range starting from %d",
+            "No ANSYS element numbers set in input.  " "Adding default range starting from %d",
             mtype_start,
         )
         mtype = np.arange(1, ncells + 1, dtype=np.int32)
@@ -568,8 +536,7 @@ def save_as_archive(
         rcon = grid.cell_data["ansys_real_constant"]
     else:
         log.info(
-            "No ANSYS element numbers set in input.  "
-            + "Adding default range starting from %d",
+            "No ANSYS element numbers set in input.  " + "Adding default range starting from %d",
             real_constant_start,
         )
         rcon = np.arange(1, ncells + 1, dtype=np.int32)
@@ -691,9 +658,7 @@ def save_as_archive(
             sig_digits=node_sig_digits,
         )
     else:
-        write_nblock(
-            filename, nodenum, grid.points, mode="a", sig_digits=node_sig_digits
-        )
+        write_nblock(filename, nodenum, grid.points, mode="a", sig_digits=node_sig_digits)
 
     # write remainder of eblock
     _write_eblock(
@@ -729,10 +694,10 @@ def save_as_archive(
 
 
 def write_nblock(
-    filename: str,
-    node_id: npt.NDArray[np.int_],
-    pos: NPArray_FLOAT32_64,
-    angles: Optional[NPArray_FLOAT32_64] = None,
+    filename: Union[str, pathlib.Path],
+    node_id: NDArray[int],
+    pos: NDArray[T],
+    angles: Optional[NDArray[T]] = None,
     mode: str = "w",
     sig_digits: int = 13,
 ) -> None:
@@ -740,7 +705,7 @@ def write_nblock(
 
     Parameters
     ----------
-    filename : str
+    filename : str, pathlib.Path
         Filename to write node block to.
     node_id : numpy.ndarray
         ANSYS node numbers.
@@ -768,16 +733,14 @@ def write_nblock(
     if sig_digits < 1:
         raise ValueError(f"`sig_digits` must be greater than 0, got {sig_digits}")
     if pos.ndim != 2 or pos.shape[1] != 3:
-        raise ValueError(
-            f"Invalid position array shape {pos.shape}. Should be shaped `(n, 3)`."
-        )
+        raise ValueError(f"Invalid position array shape {pos.shape}. Should be shaped `(n, 3)`.")
     if angles is not None:
         if angles.ndim != 2 or angles.shape[1] != 3:
             raise ValueError(
                 f"Invalid angles array shape {angles.shape}. Should be shaped `(n, 3)`."
             )
 
-    node_id_32: npt.NDArray[np.int32] = node_id.astype(np.int32, copy=False)
+    node_id_32: NDArray[np.int32] = node_id.astype(np.int32, copy=False)
 
     # node array must be sorted
     # note, this is sort check is most suited for pre-sorted arrays
@@ -792,37 +755,31 @@ def write_nblock(
     else:
         angles = np.empty((0, 0), dtype=pos.dtype)
 
-    if pos.dtype == np.float32 and angles.dtype == np.float32:
-        _archive.py_write_nblock_float(
-            filename,
-            node_id_32,
-            node_id_32[-1],
-            cast(NPArray_FLOAT32, pos),
-            cast(NPArray_FLOAT32, angles),
-            mode,
-            sig_digits,
-        )
-    elif pos.dtype == np.float64 and angles.dtype == np.float64:
-        _archive.py_write_nblock(
-            filename,
-            node_id_32,
-            node_id_32[-1],
-            cast(NPArray_FLOAT64, pos),
-            cast(NPArray_FLOAT64, angles),
-            mode,
-            sig_digits,
-        )
-    else:
-        raise ValueError(
-            "Position and angle arrays must both be either float32 or float64"
-        )
+    # void WriteNblock(
+    #     std::string &filename,
+    #     const int max_node_id,
+    #     const NDArray<const int, 1> node_id_arr,
+    #     const NDArray<const double, 2> nodes_arr,
+    #     const NDArray<const double, 2> angles_arr,
+    #     int sig_digits,
+    #     std::string &mode) {
+
+    _archive.write_nblock(
+        str(filename),
+        node_id_32[-1],
+        node_id_32,
+        pos.astype(np.float64, copy=False),
+        angles.astype(np.float64, copy=False),
+        sig_digits,
+        mode,
+    )
 
     return None
 
 
 def write_cmblock(
-    filename: Union[str, io.TextIOBase],
-    items: Sequence[int],
+    filename: Union[str, io.TextIOBase, pathlib.Path],
+    items: Union[Sequence[int], NDArray[int]],
     comp_name: str,
     comp_type: str,
     digit_width: int = 10,
@@ -867,8 +824,8 @@ def write_cmblock(
     opened_file = False
     if isinstance(filename, io.TextIOBase):
         fid = filename
-    elif isinstance(filename, str):
-        fid = open(filename, mode)  # type: ignore
+    elif isinstance(filename, (str, pathlib.Path)):
+        fid = open(str(filename), mode)  # type: ignore
         opened_file = True
     else:
         raise TypeError(
@@ -876,14 +833,14 @@ def write_cmblock(
         )
 
     if not isinstance(items, np.ndarray):
-        items_arr: npt.NDArray[np.int32] = np.array(items, dtype=np.int32)
+        items_arr = np.array(items, dtype=np.int32)
     else:
         items_arr = items.astype(np.int32, copy=False)
 
     # All this python writing could be a bottleneck for non-contiguous CMBLOCKs.
     # consider cythonizing this in the future
-    cmblock_items: npt.NDArray[np.int32] = _archive.cmblock_items_from_array(items_arr)
-    nitems: int = len(cmblock_items)
+    cmblock_items = _archive.cmblock_items_from_array(items_arr)
+    nitems = len(cmblock_items)
     print(f"CMBLOCK,{comp_name},{comp_type},{nitems:8d}", file=fid)
     print(f"(8i{digit_width})", file=fid)
     digit_formatter = f"%{digit_width}d"
@@ -907,42 +864,31 @@ def write_cmblock(
 
 def _write_eblock(
     filename: str,
-    elem_id: np.ndarray,
-    etype: np.ndarray,
-    mtype: np.ndarray,
-    rcon: np.ndarray,
-    elem_nnodes: np.ndarray,
-    cells: np.ndarray,
-    offset: np.ndarray,
-    celltypes: np.ndarray,
-    typenum: np.ndarray,
-    nodenum: np.ndarray,
-    mode="a",
-):
+    elem_id: NDArray[U],
+    etype: NDArray[U],
+    mtype: NDArray[U],
+    rcon: NDArray[U],
+    elem_nnodes: NDArray[U],
+    cells: NDArray[U],
+    offset: NDArray[U],
+    celltypes: NDArray[np.uint8],
+    typenum: NDArray[U],
+    nodenum: NDArray[U],
+    mode: str = "a",
+) -> None:
     """Write EBLOCK to disk."""
-    # perform type checking here
-    elem_id = elem_id.astype(np.int32, copy=False)
-    etype = etype.astype(np.int32, copy=False)
-    mtype = mtype.astype(np.int32, copy=False)
-    rcon = rcon.astype(np.int32, copy=False)
-    elem_nnodes = elem_nnodes.astype(np.int32, copy=False)
-    cells = cells.astype(np.int32, copy=False)
-    offset = offset.astype(np.int32, copy=False)
-    celltypes = celltypes.astype(np.uint8, copy=False)
-    typenum = typenum.astype(np.int32, copy=False)
-    nodenum = nodenum.astype(np.int32, copy=False)
-
-    _archive.py_write_eblock(
+    _archive.write_eblock(
         filename,
-        elem_id,
-        etype,
-        mtype,
-        rcon,
-        elem_nnodes,
-        cells,
-        offset,
-        celltypes,
-        typenum,
-        nodenum,
-        mode=mode,
+        elem_id.size,
+        elem_id.astype(np.int32, copy=False),
+        etype.astype(np.int32, copy=False),
+        mtype.astype(np.int32, copy=False),
+        rcon.astype(np.int32, copy=False),
+        elem_nnodes.astype(np.int32, copy=False),
+        celltypes.astype(np.uint8, copy=False),
+        offset.astype(ID_TYPE, copy=False),
+        cells.astype(ID_TYPE, copy=False),
+        typenum.astype(np.int32, copy=False),
+        nodenum.astype(np.int32, copy=False),
+        mode,
     )
