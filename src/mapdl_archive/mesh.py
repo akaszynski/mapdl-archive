@@ -208,7 +208,11 @@ class Mesh:
 
         # ANSYS element type to VTK map
         type_ref = np.empty(2 << 16, np.int32)  # 131072
-        type_ref[self._ekey[:, 0]] = etype_map[self._ekey[:, 1]]
+        try:
+            type_ref[self._ekey[:, 0]] = etype_map[self._ekey[:, 1]]
+        except:
+            print(self._ekey[:, 1])  # (debugging)
+            raise
 
         if allowable_types is None or 200 in allowable_types:
             for etype_ind, etype in self._ekey:
