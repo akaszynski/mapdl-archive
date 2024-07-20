@@ -829,9 +829,7 @@ class Archive {
         std::getline(cfile, line);
         NodeBlockFormat nfmt = GetNodeBlockFormat(line);
         if (debug) {
-            std::cout << "Reading " << n_nodes
-                      << " nodes with the following format: " << std::endl;
-            // std::cout << nfmt.to_string() << std::endl;
+            std::cout << "Reading " << n_nodes << " nodes" << std::endl;
         }
 
         // Return actual number of nodes read and wrap the raw data
@@ -856,7 +854,8 @@ class Archive {
         // Must mark nblock is read since we can only read one nblock per archive file.
         nblock_is_read = true;
         if (debug) {
-            std::cout << "Read " << n_nodes << std::endl;
+            std::cout << "Last line is: " << line << std::endl;
+            std::cout << "NBLOCK complete, read " << n_nodes << " nodes." << std::endl;
         }
     }
 
@@ -950,28 +949,20 @@ class Archive {
             // Parse based on the first character rather than reading the entire
             // line. It's faster and the parsing logic is always based on the first
             // character
-            first_char = cfile.get();
+            first_char = cfile.peek();
             // if (debug) {
-            //     std::cout << "Read character:" << first_char << std::endl;
+            //   std::cout << "Read character: " << static_cast<char>(first_char) <<
+            //   std::endl;
             // }
             if (cfile.eof()) {
-                // if (debug) {
-                //     std::cout << "Reached EOF" << std::endl;
-                // }
                 break;
 
-            } else if (first_char == '\0') {
-                // EOL
-                cfile.unget();
-                std::getline(cfile, line);
-
-                // E
             } else if (first_char == 'E' || first_char == 'e') {
+                // E commands (ET or ETBLOCK)
+
                 if (debug) {
                     std::cout << "Read E" << std::endl;
                 }
-
-                cfile.unget();
 
                 // get line but do not advance
                 position_start = cfile.tellg();
@@ -998,8 +989,6 @@ class Archive {
                     std::cout << "Read K" << std::endl;
                 }
 
-                cfile.unget();
-
                 // get line but do not advance
                 position_start = cfile.tellg();
                 std::getline(cfile, line);
@@ -1013,13 +1002,11 @@ class Archive {
                     cfile.seekg(position_end);
                 }
 
-                // test for rlblock
             } else if (first_char == 'R' || first_char == 'r') {
+                // test for RLBLOCK
                 if (debug) {
                     std::cout << "Read R" << std::endl;
                 }
-
-                cfile.unget();
 
                 // get line but do not advance
                 position_start = cfile.tellg();
@@ -1034,12 +1021,12 @@ class Archive {
                     cfile.seekg(position_end);
                 }
 
-                // test for NBLOCK
             } else if (first_char == 'N' || first_char == 'n') {
+                // test for NBLOCK
+
                 if (debug) {
                     std::cout << "Read N" << std::endl;
                 }
-                cfile.unget();
 
                 // get line but do not advance
                 position_start = cfile.tellg();
@@ -1057,7 +1044,6 @@ class Archive {
                 if (debug) {
                     std::cout << "Read C" << std::endl;
                 }
-                cfile.unget();
 
                 // get line but do not advance
                 position_start = cfile.tellg();
@@ -1075,7 +1061,7 @@ class Archive {
                 if (debug) {
                     std::cout << "No match, continuing..." << std::endl;
                 }
-                // no match, skip line
+                // Skip remainder of the line
                 cfile.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
             }
         }

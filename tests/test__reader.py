@@ -332,8 +332,7 @@ def test_read_complex_archive() -> None:
     )
     filename = os.path.join(TESTFILES_PATH, "all_solid_cells.cdb")
 
-    archive = _reader.Archive(filename)
-    # archive = _reader.Archive(filename, debug=True)
+    archive = _reader.Archive(filename, debug=True)
     archive.read()
     assert np.allclose(archive.nodes, nblock_expected)
     assert archive.n_elem == 4
