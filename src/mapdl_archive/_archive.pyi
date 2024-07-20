@@ -4,7 +4,6 @@ import numpy as np
 from numpy.typing import NDArray
 
 T = TypeVar("T", np.float32, np.float64)
-U = TypeVar("U", np.int32, np.int64)
 
 def write_nblock(
     filename: str,
@@ -24,8 +23,8 @@ def write_eblock(
     rcon: NDArray[np.int32],
     elem_nnodes: NDArray[np.int32],
     celltypes: NDArray[np.uint8],
-    offset: NDArray[U],
-    cells: NDArray[U],
+    offset: NDArray[np.int64],
+    cells: NDArray[np.int64],
     typenum: NDArray[np.int32],
     nodenum: NDArray[np.int32],
     mode: str,
@@ -33,7 +32,7 @@ def write_eblock(
 def cmblock_items_from_array(array: NDArray[np.int32]) -> NDArray[np.int32]: ...
 def reset_midside(
     celltypes: NDArray[np.uint8],
-    cells: NDArray[U],
-    offset: NDArray[U],
+    cells: NDArray[np.int64],
+    offset: NDArray[np.int64],
     points: NDArray[T],
 ) -> None: ...

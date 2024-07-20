@@ -1,10 +1,7 @@
-from typing import Dict, List, Tuple, TypeVar
+from typing import Dict, List, Tuple
 
 import numpy as np
 from numpy.typing import NDArray
-
-# VTK uses int32 on Windows and int64 on Linux
-U = TypeVar("U", np.int32, np.int64)
 
 class Archive:
     elem: NDArray[np.int32]
@@ -48,4 +45,4 @@ def ans_to_vtk(
     elem_off: NDArray[np.int32],
     type_ref: NDArray[np.int32],
     nnum: NDArray[np.int32],
-) -> Tuple[NDArray[U], NDArray[np.uint8], NDArray[U]]: ...
+) -> Tuple[NDArray[np.int64], NDArray[np.uint8], NDArray[np.int64]]: ...

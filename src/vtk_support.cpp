@@ -1,6 +1,4 @@
-#include <stdbool.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <stdlib.h>
 
 #include "vtk_support.h"
@@ -25,8 +23,8 @@ uint8_t VTK_QUADRATIC_HEXAHEDRON = 25;
 
 // Contains data for VTK UnstructuredGrid
 struct VtkData {
-    vtk_int *offset;
-    vtk_int *cells;
+    int64_t *offset;
+    int64_t *cells;
     uint8_t *celltypes;
     int loc;   // current position within cells
     int *nref; // conversion between ansys and vtk numbering
@@ -444,8 +442,8 @@ int ans_to_vtk(
     const int *type_ref,
     const int nnode,
     const int *nnum,
-    vtk_int *offset,
-    vtk_int *cells,
+    int64_t *offset,
+    int64_t *cells,
     uint8_t *celltypes) {
     bool is_quad;
     int i;          // counter

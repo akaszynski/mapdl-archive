@@ -79,7 +79,6 @@ TARGE170_MAP = {
     "POINT": 1,  # Point
 }
 
-U = TypeVar("U", np.int32, np.int64)
 T = TypeVar("T", np.float32, np.float64)
 
 
@@ -259,11 +258,9 @@ class Mesh:
         grid = UnstructuredGrid()
         grid.points = nodes
 
-        # Enforce no copy setting cells
+        # Warn when type mismatch as it results in copying setting cells
         if cells.dtype != ID_TYPE:
-            raise RuntimeError(
-                f"Mismatch between cell dtype {cells.dtype} and VTK ID_TYPE {ID_TYPE}"
-            )
+            warnings.warn(f"Mismatch between cell dtype {cells.dtype} and VTK ID_TYPE {ID_TYPE}")
 
         vtk_cells = CellArray.from_arrays(offset, cells, deep=False)
         vtk_cell_type = numpy_to_vtk(celltypes, deep=False)
@@ -757,10 +754,10 @@ class Mesh:
 
 
 def fix_missing_midside(
-    cells: NDArray[U],
+    cells: NDArray[np.int64],
     nodes: NDArray[np.double],
     celltypes: NDArray[np.uint8],
-    offset: NDArray[U],
+    offset: NDArray[np.int64],
     angles: Optional[NDArray[np.float64]],
     nnum: NDArray[np.int32],
 ) -> Tuple[NDArray[np.float64], Optional[NDArray[np.float64]], NDArray[np.int32]]:

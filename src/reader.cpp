@@ -7,7 +7,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 #include <unordered_map>
 #include <vector>
 
@@ -19,13 +18,6 @@
 
 #include "array_support.h"
 #include "vtk_support.h"
-
-// do we really need this repeated here?
-#if defined(__linux__) || defined(__APPLE__)
-typedef int64_t vtk_int;
-#else
-typedef int32_t vtk_int;
-#endif
 
 using namespace nb::literals;
 
@@ -637,20 +629,20 @@ class Archive {
 
         // start by reading in the first line, which must be an ETBLOCK
         std::getline(cfile, line);
-        std::cerr << "Read line: " << line << std::endl;
+        // std::cerr << "Read line: " << line << std::endl;
         std::istringstream iss(line);
 
         // skip first item (ETBLOCK)
         std::getline(iss, token, ',');
-        std::cerr << "Skipped token: " << token << std::endl;
+        // std::cerr << "Skipped token: " << token << std::endl;
 
         // read the number of items in the block
         std::getline(iss, token, ',');
-        std::cerr << "Read n_items token: " << token << std::endl;
+        // std::cerr << "Read n_items token: " << token << std::endl;
         int n_items = 0;
         try {
             n_items = std::stoi(token);
-            std::cerr << "Parsed n_items: " << n_items << std::endl;
+            // std::cerr << "Parsed n_items: " << n_items << std::endl;
         } catch (...) {
             std::cerr << "Failed to read ETBLOCK n_items" << std::endl;
             return;
@@ -658,13 +650,13 @@ class Archive {
 
         // Skip format line (2i9,19a9)
         std::getline(cfile, line);
-        std::cerr << "Skipped format line: " << line << std::endl;
+        // std::cerr << "Skipped format line: " << line << std::endl;
 
         // Read each item
         int elem_id, elem_type_id;
         for (int i = 0; i < n_items; i++) {
             std::getline(cfile, line);
-            std::cerr << "Read line: " << line << std::endl;
+            // std::cerr << "Read line: " << line << std::endl;
             iss.clear();
             iss.str(line);
 
@@ -674,8 +666,8 @@ class Archive {
                 std::cerr << "Failed to read ETBLOCK entry at line: " << line << std::endl;
                 return;
             }
-            std::cerr << "Read elem_id: " << elem_id << ", elem_type_id: " << elem_type_id
-                      << std::endl;
+            // std::cerr << "Read elem_id: " << elem_id << ", elem_type_id: " << elem_type_id
+            //           << std::endl;
             std::vector<int> entry;
             entry.push_back(elem_id);
             entry.push_back(elem_type_id);
@@ -1144,27 +1136,27 @@ class Archive {
 
     // Convert ansys style connectivity to VTK connectivity
     // type_ref is a mapping between ansys element types and VTK element types
-    // nb::tuple ToVTK(NDArray<int, 1> type_ref) {
-    //     NDArray<vtk_int, 1> offset_arr = MakeNDArray<vtk_int, 1>({n_elem + 1});
-    //     NDArray<uint8_t, 1> celltypes_arr = MakeNDArray<uint8_t, 1>({n_elem});
+    nb::tuple ToVTK(NDArray<int, 1> type_ref) {
+        NDArray<int64_t, 1> offset_arr = MakeNDArray<int64_t, 1>({n_elem + 1});
+        NDArray<uint8_t, 1> celltypes_arr = MakeNDArray<uint8_t, 1>({n_elem});
 
-    //     // Allocate connectivity: max cell size 20 for VTK_HEXAHEDRAL
-    //     vtk_int *cell_data = new vtk_int[n_elem * 20];
+        // Allocate connectivity: max cell size 20 for VTK_HEXAHEDRAL
+        int64_t *cell_data = new int64_t[n_elem * 20];
 
-    //     int loc = ans_to_vtk(
-    //         n_elem,
-    //         elem_arr.data(),
-    //         elem_off_arr.data(),
-    //         type_ref.data(),
-    //         n_nodes,
-    //         nnum_arr.data(),
-    //         offset_arr.data(),
-    //         cell_data,
-    //         celltypes_arr.data());
+        int loc = ans_to_vtk(
+            n_elem,
+            elem_arr.data(),
+            elem_off_arr.data(),
+            type_ref.data(),
+            n_nodes,
+            nnum_arr.data(),
+            offset_arr.data(),
+            cell_data,
+            celltypes_arr.data());
 
-    //     NDArray<vtk_int, 1> cells_arr = WrapNDarray<vtk_int, 1>(cell_data, {loc});
-    //     return nb::make_tuple(offset_arr, celltypes_arr, cells_arr);
-    // }
+        NDArray<int64_t, 1> cells_arr = WrapNDarray<int64_t, 1>(cell_data, {loc});
+        return nb::make_tuple(offset_arr, celltypes_arr, cells_arr);
+    }
 
     ~Archive() { cfile.close(); }
 
@@ -1188,11 +1180,11 @@ nb::tuple ConvertToVTK(
     int n_elem = elem_off_arr.size() - 1;
     int n_nodes = nnum_arr.size();
 
-    NDArray<vtk_int, 1> offset_arr = MakeNDArray<vtk_int, 1>({n_elem + 1});
+    NDArray<int64_t, 1> offset_arr = MakeNDArray<int64_t, 1>({n_elem + 1});
     NDArray<uint8_t, 1> celltypes_arr = MakeNDArray<uint8_t, 1>({n_elem});
 
     // Allocate connectivity: max cell size 20 for VTK_HEXAHEDRAL
-    vtk_int *cell_data = new vtk_int[n_elem * 20];
+    int64_t *cell_data = new int64_t[n_elem * 20];
 
     int loc = ans_to_vtk(
         n_elem,
@@ -1205,7 +1197,7 @@ nb::tuple ConvertToVTK(
         cell_data,
         celltypes_arr.data());
 
-    NDArray<vtk_int, 1> cells_arr = WrapNDarray<vtk_int, 1>(cell_data, {loc});
+    NDArray<int64_t, 1> cells_arr = WrapNDarray<int64_t, 1>(cell_data, {loc});
     return nb::make_tuple(offset_arr, celltypes_arr, cells_arr);
 }
 

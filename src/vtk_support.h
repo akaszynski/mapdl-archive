@@ -1,10 +1,7 @@
-#include <stdint.h>
+#ifndef VTK_SUPPORT_H
+#define VTK_SUPPORT_H
 
-#if defined(__linux__) || defined(__APPLE__)
-typedef int64_t vtk_int;
-#else
-typedef int32_t vtk_int;
-#endif
+#include <stdint.h>
 
 int ans_to_vtk(
     const int,
@@ -13,6 +10,8 @@ int ans_to_vtk(
     const int *,
     const int,
     const int *,
-    vtk_int *,
-    vtk_int *,
+    int64_t *,
+    int64_t *,
     uint8_t *);
+
+#endif
