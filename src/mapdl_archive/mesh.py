@@ -259,9 +259,11 @@ class Mesh:
         grid = UnstructuredGrid()
         grid.points = nodes
 
-        # no copy setting cells
+        # Enforce no copy setting cells
         if cells.dtype != ID_TYPE:
-            raise RuntimeError("Mismatch between cell dtype and VTK ID_TYPE")
+            raise RuntimeError(
+                f"Mismatch between cell dtype {cells.dtype} and VTK ID_TYPE {ID_TYPE}"
+            )
 
         vtk_cells = CellArray.from_arrays(offset, cells, deep=False)
         vtk_cell_type = numpy_to_vtk(celltypes, deep=False)
