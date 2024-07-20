@@ -538,8 +538,6 @@ class Archive {
         // https://nanobind.readthedocs.io/en/latest/faq.html#why-am-i-getting-errors-about-leaked-functions-and-types
         nb::set_leak_warnings(false);
 
-        std::ifstream cfile(filename);
-
         if (!cfile.is_open()) {
             throw std::runtime_error("No such file or directory: '" + filename + "'");
         }
@@ -794,15 +792,17 @@ class Archive {
         }
     }
 
-    void ReadNBlock(const int nblock_start) {
+    void ReadNBlock(const int pos) {
 
         // Sometimes, DAT files contains multiple node blocks. Read only the first block.
         if (nblock_is_read) {
             return;
         }
+        nblock_start = pos;
 
         // Get size of NBLOCK
         // Assumes line is at NBLOCK
+        std::cout << "line: " << line << std::endl;
         try {
             // Number of nodes is last item in string
             n_nodes = std::stoi(line.substr(line.rfind(',') + 1));
@@ -933,7 +933,6 @@ class Archive {
 
     void Read() {
         int first_char, next_char;
-        std::string line;
 
         int position_start, position_end;
         while (true) {
@@ -994,7 +993,8 @@ class Archive {
                 }
 
             } else if (first_char == 'N' || first_char == 'n') {
-                position_start = cfile.tellg();
+                // store current position if we read in the node block
+                const int pos = cfile.tellg();
                 std::getline(cfile, line);
                 // test for NBLOCK
 
@@ -1004,7 +1004,7 @@ class Archive {
 
                 // Record node block
                 if (line.compare(0, 5, "NBLOC") == 0 || line.compare(0, 5, "nbloc") == 0) {
-                    ReadNBlock(position_start);
+                    ReadNBlock(pos);
                 }
 
             } else if (first_char == 'C' || first_char == 'c') {

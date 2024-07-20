@@ -275,8 +275,8 @@ def test_read_mesh200() -> None:
     filename = os.path.join(TESTFILES_PATH, "mesh200.cdb")
     archive = _reader.Archive(filename, debug=True)
     archive.read()
-    assert archive.n_elem == 1000
     assert archive.n_nodes == 4961
+    assert archive.n_elem == 1000
 
     # spot check
     # 1290        0        0 4.0000000000000E-001 6.0000000000000E-001
