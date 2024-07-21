@@ -1,5 +1,5 @@
 #include <algorithm>
-#include <fcntl.h>
+// #include <fcntl.h>
 #include <iostream>
 #include <math.h>
 #include <sstream>
@@ -7,7 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
+// #include <unistd.h>
 #include <unordered_map>
 #include <vector>
 
@@ -25,6 +25,15 @@ using namespace nb::literals;
 #if defined(_WIN32) || defined(_WIN64)
 /* We are on Windows */
 #define strtok_r strtok_s
+#endif
+
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #endif
 
 // #define DEBUG
@@ -171,13 +180,61 @@ class MemoryMappedFile {
   private:
     size_t size;
     char *start;
+#ifdef _WIN32
+    HANDLE fileHandle;
+    HANDLE mapHandle;
+#else
+    int fd;
+#endif
 
   public:
     std::string line;
     char *current;
 
-    MemoryMappedFile(const char *filename) : start(nullptr), current(nullptr), size(0) {
-        int fd = open(filename, O_RDONLY);
+    MemoryMappedFile(const char *filename)
+        : start(nullptr), current(nullptr), size(0)
+#ifdef _WIN32
+          ,
+          fileHandle(INVALID_HANDLE_VALUE), mapHandle(nullptr)
+#else
+          ,
+          fd(-1)
+#endif
+    {
+#ifdef _WIN32
+        fileHandle = CreateFile(
+            filename,
+            GENERIC_READ,
+            FILE_SHARE_READ,
+            nullptr,
+            OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL,
+            nullptr);
+        if (fileHandle == INVALID_HANDLE_VALUE) {
+            throw std::runtime_error("Error opening file");
+        }
+
+        LARGE_INTEGER fileSize;
+        if (!GetFileSizeEx(fileHandle, &fileSize)) {
+            CloseHandle(fileHandle);
+            throw std::runtime_error("Error getting file size");
+        }
+
+        size = static_cast<size_t>(fileSize.QuadPart);
+        mapHandle = CreateFileMapping(fileHandle, nullptr, PAGE_READONLY, 0, 0, nullptr);
+        if (mapHandle == nullptr) {
+            CloseHandle(fileHandle);
+            throw std::runtime_error("Error creating file mapping");
+        }
+
+        start = static_cast<char *>(MapViewOfFile(mapHandle, FILE_MAP_READ, 0, 0, size));
+        if (start == nullptr) {
+            CloseHandle(mapHandle);
+            CloseHandle(fileHandle);
+            throw std::runtime_error("Error mapping file");
+        }
+#else
+        fd = open(filename, O_RDONLY);
         if (fd == -1) {
             throw std::runtime_error("Error opening file");
         }
@@ -190,13 +247,40 @@ class MemoryMappedFile {
 
         size = st.st_size;
         start = static_cast<char *>(mmap(nullptr, size, PROT_READ, MAP_PRIVATE, fd, 0));
-        current = start;
         if (start == MAP_FAILED) {
             close(fd);
             throw std::runtime_error("Error mapping file");
         }
+#endif
+        current = start;
+    }
 
-        close(fd); // File descriptor no longer needed after mmap
+    ~MemoryMappedFile() {
+        close_file();
+#ifdef _WIN32
+        if (fileHandle != INVALID_HANDLE_VALUE) {
+            CloseHandle(fileHandle);
+        }
+        if (mapHandle != nullptr) {
+            CloseHandle(mapHandle);
+        }
+#else
+        if (fd != -1) {
+            close(fd);
+        }
+#endif
+    }
+
+    void close_file() {
+        if (start) {
+#ifdef _WIN32
+            UnmapViewOfFile(start);
+#else
+            munmap(start, size);
+#endif
+            start = nullptr;
+            current = nullptr;
+        }
     }
 
     char &operator[](size_t index) {
@@ -208,14 +292,6 @@ class MemoryMappedFile {
     }
 
     void operator+=(size_t offset) { current += offset; }
-
-    void close_file() {
-        if (start) {
-            munmap(start, size);
-            start = nullptr;
-            current = nullptr;
-        }
-    }
 
     // Seek to the end of the line
     void seek_eol() {
