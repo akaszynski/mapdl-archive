@@ -26,7 +26,7 @@ using namespace nb::literals;
 #define strtok_r strtok_s
 #endif
 
-#define DEBUG
+// #define DEBUG
 
 static const double DIV_OF_TEN[] = {
     1.0e-0,  1.0e-1,  1.0e-2,  1.0e-3,  1.0e-4,  1.0e-5,  1.0e-6,  1.0e-7,  1.0e-8,  1.0e-9,
@@ -802,7 +802,7 @@ class Archive {
 
         // Get size of NBLOCK
         // Assumes line is at NBLOCK
-        std::cout << "line: " << line << std::endl;
+        // std::cout << "line: " << line << std::endl;
         try {
             // Number of nodes is last item in string
             n_nodes = std::stoi(line.substr(line.rfind(',') + 1));
@@ -1016,7 +1016,7 @@ class Archive {
 
                 // Record component block
                 if (line.compare(0, 5, "CMBLO") == 0 || line.compare(0, 5, "cmblo") == 0) {
-                    std::cout << "Reading CMBLOCK" << std::endl;
+                    // std::cout << "Reading CMBLOCK" << std::endl;
                     ReadCMBlock();
                 }
             } else {
