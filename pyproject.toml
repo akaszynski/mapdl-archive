@@ -27,7 +27,7 @@ description = "Pythonic interface to MAPDL archive files."
 name = "mapdl-archive"
 readme = "README.rst"
 requires-python = ">=3.8"
-version = "0.2.0"
+version = "0.2.1"
 
 [project.urls]
 Repository = "https://github.com/akaszynski/mapdl-archive"
