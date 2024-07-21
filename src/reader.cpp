@@ -1,5 +1,4 @@
 #include <algorithm>
-// #include <fcntl.h>
 #include <iostream>
 #include <math.h>
 #include <sstream>
@@ -7,7 +6,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-// #include <unistd.h>
 #include <unordered_map>
 #include <vector>
 
@@ -22,12 +20,9 @@
 
 using namespace nb::literals;
 
-#if defined(_WIN32) || defined(_WIN64)
 /* We are on Windows */
+#if defined(_WIN32) || defined(_WIN64)
 #define strtok_r strtok_s
-#endif
-
-#ifdef _WIN32
 #include <windows.h>
 #else
 #include <fcntl.h>
