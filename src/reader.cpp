@@ -1,5 +1,4 @@
 #include <algorithm>
-#include <fstream>
 #include <iostream>
 #include <math.h>
 #include <sstream>
@@ -21,9 +20,15 @@
 
 using namespace nb::literals;
 
-#if defined(_WIN32) || defined(_WIN64)
 /* We are on Windows */
+#if defined(_WIN32) || defined(_WIN64)
 #define strtok_r strtok_s
+#include <windows.h>
+#else
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #endif
 
 // #define DEBUG
@@ -166,19 +171,181 @@ static inline int ans_strtod(char *raw, int fltsz, double *arr) {
     return 0;
 }
 
-int ReadEBlockCfile(std::ifstream &cfile, int *elem_off, int *elem, const int nelem) {
+class MemoryMappedFile {
+  private:
+    size_t size;
+    char *start;
+#ifdef _WIN32
+    HANDLE fileHandle;
+    HANDLE mapHandle;
+#else
+    int fd;
+#endif
+
+  public:
+    std::string line;
+    char *current;
+
+    MemoryMappedFile(const char *filename)
+        : start(nullptr), current(nullptr), size(0)
+#ifdef _WIN32
+          ,
+          fileHandle(INVALID_HANDLE_VALUE), mapHandle(nullptr)
+#else
+          ,
+          fd(-1)
+#endif
+    {
+#ifdef _WIN32
+        fileHandle = CreateFile(
+            filename,
+            GENERIC_READ,
+            FILE_SHARE_READ,
+            nullptr,
+            OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL,
+            nullptr);
+        if (fileHandle == INVALID_HANDLE_VALUE) {
+            throw std::runtime_error("Error opening file");
+        }
+
+        LARGE_INTEGER fileSize;
+        if (!GetFileSizeEx(fileHandle, &fileSize)) {
+            CloseHandle(fileHandle);
+            throw std::runtime_error("Error getting file size");
+        }
+
+        size = static_cast<size_t>(fileSize.QuadPart);
+        mapHandle = CreateFileMapping(fileHandle, nullptr, PAGE_READONLY, 0, 0, nullptr);
+        if (mapHandle == nullptr) {
+            CloseHandle(fileHandle);
+            throw std::runtime_error("Error creating file mapping");
+        }
+
+        start = static_cast<char *>(MapViewOfFile(mapHandle, FILE_MAP_READ, 0, 0, size));
+        if (start == nullptr) {
+            CloseHandle(mapHandle);
+            CloseHandle(fileHandle);
+            throw std::runtime_error("Error mapping file");
+        }
+#else
+        fd = open(filename, O_RDONLY);
+        if (fd == -1) {
+            throw std::runtime_error("Error opening file");
+        }
+
+        struct stat st;
+        if (fstat(fd, &st) == -1) {
+            close(fd);
+            throw std::runtime_error("Error getting file size");
+        }
+
+        size = st.st_size;
+        start = static_cast<char *>(mmap(nullptr, size, PROT_READ, MAP_PRIVATE, fd, 0));
+        if (start == MAP_FAILED) {
+            close(fd);
+            throw std::runtime_error("Error mapping file");
+        }
+#endif
+        current = start;
+    }
+
+    ~MemoryMappedFile() {
+        close_file();
+#ifdef _WIN32
+        if (fileHandle != INVALID_HANDLE_VALUE) {
+            CloseHandle(fileHandle);
+        }
+        if (mapHandle != nullptr) {
+            CloseHandle(mapHandle);
+        }
+#else
+        if (fd != -1) {
+            close(fd);
+        }
+#endif
+    }
+
+    void close_file() {
+        if (start) {
+#ifdef _WIN32
+            UnmapViewOfFile(start);
+#else
+            munmap(start, size);
+#endif
+            start = nullptr;
+            current = nullptr;
+        }
+    }
+
+    char &operator[](size_t index) {
+        // implement bounds checking?
+        // if (index >= size) {
+        //     throw std::out_of_range("Index out of bounds");
+        // }
+        return current[index];
+    }
+
+    void operator+=(size_t offset) { current += offset; }
+
+    // Seek to the end of the line
+    void seek_eol() {
+        // check if at end of file
+        if (current >= start + size) {
+            // std::cout << "end" << std::endl;
+            return;
+        }
+
+        while (current < start + size && *current != '\n') {
+            current++;
+        }
+
+        if (current < start + size && *current == '\n') {
+            current++;
+        }
+    }
+
+    bool eof() { return current >= start + size; }
+
+    bool read_line() {
+        line.clear();
+        if (current >= start + size) {
+            return false;
+        }
+
+        char *line_start = current;
+        while (current < start + size && *current != '\n') {
+            line += *current++;
+        }
+
+        if (current < start + size && *current == '\n') {
+            current++;
+        }
+
+        return line_start != current;
+    }
+
+    size_t current_line_length() const {
+        char *temp = current;
+        size_t length = 0;
+        while (temp < start + size && *temp != '\n') {
+            length++;
+            temp++;
+        }
+        return length;
+    }
+
+    off_t tellg() const { return current - start; }
+};
+
+int ReadEBlockMemMap(MemoryMappedFile &memmap, int *elem_off, int *elem, const int nelem) {
     int i, j, n_node;
 
     // set to start of the NBLOCK
-    char line[256]; // maximum of 19 values, at most 13 char per int is 228
-    char *cursor = line;
+    // char line[256]; // maximum of 19 values, at most 13 char per int is 228
 
-    if (!cfile.getline(line, sizeof(line))) {
-        return 0;
-    }
-
-    char *i_pos = strchr(line, 'i');
-    char *close_paren_pos = strchr(line, ')');
+    char *i_pos = strchr(memmap.current, 'i');
+    char *close_paren_pos = strchr(memmap.current, ')');
     if (i_pos == NULL || close_paren_pos == NULL || i_pos > close_paren_pos) {
         fprintf(stderr, "Invalid line format\n");
         return 0;
@@ -188,6 +355,7 @@ int ReadEBlockCfile(std::ifstream &cfile, int *elem_off, int *elem, const int ne
     sscanf(i_pos + 1, "%d", &isz);
 
     // Loop through elements
+    memmap.seek_eol();
     int c = 0;
     for (i = 0; i < nelem; ++i) {
         // store start of each element
@@ -195,56 +363,54 @@ int ReadEBlockCfile(std::ifstream &cfile, int *elem_off, int *elem, const int ne
 
         // Read the line and determine the number of values. MAPDL does not write all the
         // values on a single line
-        cfile.getline(line, sizeof(line));
-        n_values = cfile.gcount() / isz;
-
-        cursor = line; // is this necessary, why not just use line?
+        n_values = memmap.current_line_length() / isz;
+        // std::cout << n_values << std::endl;
 
         // It's possible that less nodes are written to the record than
         // indicated.  In this case the line starts with a -1
 
         // Check if at end of the block
-        if (checkneg(cursor, isz)) {
-            cursor += isz;
+        if (checkneg(memmap.current, isz)) {
+            memmap += isz;
             break;
         }
 
         // ANSYS archive format:
         // Field 1: material reference number
-        elem[c++] = fast_atoi(cursor, isz);
-        cursor += isz;
+        elem[c++] = fast_atoi(memmap.current, isz);
+        memmap += isz;
 
         // Field 2: element type number
-        elem[c++] = fast_atoi(cursor, isz);
-        cursor += isz;
+        elem[c++] = fast_atoi(memmap.current, isz);
+        memmap += isz;
 
         // Field 3: real constant reference number
-        elem[c++] = fast_atoi(cursor, isz);
-        cursor += isz;
+        elem[c++] = fast_atoi(memmap.current, isz);
+        memmap += isz;
 
         // Field 4: section number
-        elem[c++] = fast_atoi(cursor, isz);
-        cursor += isz;
+        elem[c++] = fast_atoi(memmap.current, isz);
+        memmap += isz;
 
         // Field 5: element coordinate system
-        elem[c++] = fast_atoi(cursor, isz);
-        cursor += isz;
+        elem[c++] = fast_atoi(memmap.current, isz);
+        memmap += isz;
 
         // Field 6: Birth/death flag
-        elem[c++] = fast_atoi(cursor, isz);
-        cursor += isz;
+        elem[c++] = fast_atoi(memmap.current, isz);
+        memmap += isz;
 
         // Field 7: Solid model reference
-        elem[c++] = fast_atoi(cursor, isz);
-        cursor += isz;
+        elem[c++] = fast_atoi(memmap.current, isz);
+        memmap += isz;
 
         // Field 8: Coded shape key
-        elem[c++] = fast_atoi(cursor, isz);
-        cursor += isz;
+        elem[c++] = fast_atoi(memmap.current, isz);
+        memmap += isz;
 
         // Field 9: Number of nodes, don't store this
-        n_node = fast_atoi(cursor, isz);
-        cursor += isz;
+        n_node = fast_atoi(memmap.current, isz);
+        memmap += isz;
 
         //   /* // sanity check */
         //   /* if (n_node > 20){ */
@@ -254,11 +420,11 @@ int ReadEBlockCfile(std::ifstream &cfile, int *elem_off, int *elem, const int ne
         //   /* } */
 
         // Field 10: Not Used
-        cursor += isz;
+        memmap += isz;
 
         // Field 11: Element number
-        elem[c++] = fast_atoi(cursor, isz);
-        cursor += isz;
+        elem[c++] = fast_atoi(memmap.current, isz);
+        memmap += isz;
         /* printf("reading element %d\n", elem[c - 1]); */
 
         // Need an additional value for consistency with other formats
@@ -267,19 +433,19 @@ int ReadEBlockCfile(std::ifstream &cfile, int *elem_off, int *elem, const int ne
         // Read the node indices in this line
         int n_read = n_values - 11;
         for (j = 0; j < n_read; j++) {
-            elem[c++] = fast_atoi(cursor, isz);
-            cursor += isz;
+            elem[c++] = fast_atoi(memmap.current, isz);
+            memmap += isz;
         }
 
         // There's a second line if we've not read all the nodes
+        memmap.seek_eol();
         if (n_read < n_node) {
-            cfile.getline(line, sizeof(line));
-            cursor = line;
-            n_read = cfile.gcount() / isz;
+            n_read = memmap.current_line_length() / isz;
             for (j = 0; j < n_read; j++) {
-                elem[c++] = fast_atoi(cursor, isz);
-                cursor += isz;
+                elem[c++] = fast_atoi(memmap.current, isz);
+                memmap += isz;
             }
+            memmap.seek_eol();
         }
 
         // Edge case where missing midside nodes are not written (because
@@ -310,8 +476,8 @@ int write_array_ascii(const char *filename, const double *arr, const int nvalues
     return 0;
 }
 
-int ReadNBlockCfile(
-    std::ifstream &cfile,
+int ReadNBlockMemMap(
+    MemoryMappedFile &memmap,
     int *nnum,
     double *nodes,
     double *node_angles,
@@ -320,38 +486,43 @@ int ReadNBlockCfile(
     const int f_size) {
 
     int i, j, i_val, eol;
-    char line[256];
-
     for (i = 0; i < nnodes; i++) {
         // Read a line from the file
-        cfile.getline(line, sizeof(line));
+        int count = memmap.current_line_length();
 
         // It's possible that less nodes are written to the record than
         // indicated.  In this case the line starts with a -1
-        if (line[0] == '-') {
+        if (memmap[0] == '-') {
             break;
         }
 
-        std::streamsize count = cfile.gcount();
-        char *cursor = line;
-
-        i_val = fast_atoi(cursor, d_size[0]);
+        i_val = fast_atoi(memmap.current, d_size[0]);
 #ifdef DEBUG
-        printf("%8d    \n", i_val);
+        std::cout << "Node number " << i_val << std::endl;
 #endif
         nnum[i] = i_val;
 
-        cursor += d_size[0];
-        cursor += d_size[1];
-        cursor += d_size[2];
+        memmap += d_size[0];
+        memmap += d_size[1];
+        memmap += d_size[2];
 
         // read nodes
         int n_read = (count - d_size[0] * 3) / f_size;
+#ifdef DEBUG
+        std::cout << "n_read: " << n_read << std::endl;
+#endif
         int n_read_nodes = (n_read < 3) ? n_read : 3;
         for (j = 0; j < n_read_nodes; j++) {
-            ans_strtod(cursor, f_size, &nodes[3 * i + j]);
-            cursor += f_size;
+            ans_strtod(memmap.current, f_size, &nodes[3 * i + j]);
+#ifdef DEBUG
+            std::cout << " " << nodes[3 * i + j] << " ";
+#endif
+            memmap.current += f_size;
         }
+#ifdef DEBUG
+        std::cout << std::endl;
+#endif
+
         // fill in unread nodes with zeros
         for (; j < 3; j++) {
             nodes[3 * i + j] = 0;
@@ -359,22 +530,17 @@ int ReadNBlockCfile(
 
         // read in node angles if applicable
         for (; j < n_read; j++) {
-            eol = ans_strtod(cursor, f_size, &node_angles[3 * i + (j - 3)]);
+            eol = ans_strtod(memmap.current, f_size, &node_angles[3 * i + (j - 3)]);
             if (eol)
                 break;
-            cursor += f_size;
+            memmap += f_size;
         }
+
+        // seek to the end of the line
+        memmap.seek_eol();
     }
 
     return i;
-}
-
-int safe_int(const std::string &value) {
-    try {
-        return std::stoi(value);
-    } catch (...) {
-        return -1;
-    }
 }
 
 int getSizeOfEBLOCK(const std::string &line) {
@@ -490,9 +656,10 @@ NDArray<int, 1> InterpretComponent(const std::vector<int> &component) {
 class Archive {
 
   private:
-    std::string line;
+    // std::string line;
     bool debug;
     std::string filename;
+    MemoryMappedFile memmap;
 
   public:
     bool read_parameters;
@@ -500,7 +667,6 @@ class Archive {
     bool read_eblock;
     bool eblock_is_read = false;
     bool nblock_is_read = false;
-    std::ifstream cfile;
 
     std::vector<std::vector<int>> elem_type;
     std::unordered_map<int, std::vector<std::vector<int>>> keyopt;
@@ -532,15 +698,11 @@ class Archive {
         bool dbg = false,
         bool readEblock = true)
         : filename(fname), read_parameters(readParams), debug(dbg), read_eblock(readEblock),
-          cfile(fname) {
+          memmap(fname.c_str()) {
 
         // Likely bogus leak warnings. See:
         // https://nanobind.readthedocs.io/en/latest/faq.html#why-am-i-getting-errors-about-leaked-functions-and-types
         nb::set_leak_warnings(false);
-
-        if (!cfile.is_open()) {
-            throw std::runtime_error("No such file or directory: '" + filename + "'");
-        }
 
         if (read_parameters) {
             throw std::runtime_error("Read parameters has been deprecated");
@@ -554,7 +716,8 @@ class Archive {
             std::cout << "reading ET" << std::endl;
         }
 
-        std::istringstream iss(line);
+        // Assumes that the memory map is already at the ET line
+        std::istringstream iss(memmap.line);
         std::string token;
         std::vector<int> et_vals;
 
@@ -582,7 +745,7 @@ class Archive {
         std::vector<int> values;
 
         // Assumes current line is an ETBLOCK
-        std::istringstream iss(line);
+        std::istringstream iss(memmap.line);
 
         // skip first item (ETBLOCK)
         std::getline(iss, token, ',');
@@ -598,19 +761,21 @@ class Archive {
         }
 
         // Skip format line (2i9,19a9)
-        std::getline(cfile, line);
+        memmap.seek_eol();
 
         // Read each item
         int elem_id, elem_type_id;
         for (int i = 0; i < n_items; i++) {
-            std::getline(cfile, line);
+            // std::getline(cfile, line);
+            memmap.read_line();
             iss.clear();
-            iss.str(line);
+            iss.str(memmap.line);
 
             // We only care about the first two integers in the block, the rest are keyopts
             if (!(iss >> elem_id >> elem_type_id)) {
                 // allow a soft return
-                std::cerr << "Failed to read ETBLOCK entry at line: " << line << std::endl;
+                std::cerr << "Failed to read ETBLOCK entry at line: " << memmap.line
+                          << std::endl;
                 return;
             }
             std::vector<int> entry;
@@ -628,24 +793,25 @@ class Archive {
         }
 
         // Assumes already start of EBLOCK
-        std::istringstream iss(line);
+        std::istringstream iss(memmap.line);
 
         // Only read in SOLID eblocks
-        std::transform(line.begin(), line.end(), line.begin(), [](unsigned char c) {
-            return std::tolower(c);
-        });
-        if (line.find("solid") == std::string::npos) {
+        std::transform(
+            memmap.line.begin(), memmap.line.end(), memmap.line.begin(), [](unsigned char c) {
+                return std::tolower(c);
+            });
+        if (memmap.line.find("solid") == std::string::npos) {
             return;
         }
 
         // Get size of EBLOCK from the last item in the line
         // Example: "EBLOCK,19,SOLID,,3588"
-        n_elem = getSizeOfEBLOCK(line);
+        n_elem = getSizeOfEBLOCK(memmap.line);
 
         // we have to allocate memory for the maximum size since we don't know that a priori
         int *elem_data = AllocateArray<int>(n_elem * 30);
         elem_off_arr = MakeNDArray<int, 1>({n_elem + 1});
-        int elem_sz = ReadEBlockCfile(cfile, elem_off_arr.data(), elem_data, n_elem);
+        int elem_sz = ReadEBlockMemMap(memmap, elem_off_arr.data(), elem_data, n_elem);
 
         // wrap the raw data but limit it to the size of the number of elements read
         // Note: This is faster than reallocating a new array but will use more memory
@@ -663,7 +829,7 @@ class Archive {
         }
 
         // Assumes at KEYOPT line
-        std::istringstream iss(line);
+        std::istringstream iss(memmap.line);
         std::string token;
 
         // Skip the first token (KEYOPT)
@@ -676,7 +842,8 @@ class Archive {
             etype = std::stoi(token);
         } catch (const std::invalid_argument &) {
             // soft error
-            std::cerr << "Invalid format in KEYOPT line for elem_num:" << line << std::endl;
+            std::cerr << "Invalid format in KEYOPT line for elem_num:" << memmap.line
+                      << std::endl;
             return;
         }
 
@@ -687,7 +854,7 @@ class Archive {
                 keyopt_vals.push_back(std::stoi(token));
             } catch (const std::invalid_argument &) {
                 // soft error
-                std::cerr << "Invalid format in KEYOPT line:" << line << std::endl;
+                std::cerr << "Invalid format in KEYOPT line:" << memmap.line << std::endl;
                 return;
             }
         }
@@ -706,7 +873,7 @@ class Archive {
         std::vector<int> set_dat;
 
         // Assumes line at RLBLOCK
-        std::istringstream iss(line);
+        std::istringstream iss(memmap.line);
         std::string token;
         // while (std::getline(iss, token, ',')) {
         //     set_dat.push_back(std::stoi(token));
@@ -720,71 +887,74 @@ class Archive {
             std::getline(iss, token, ',');
             nset = std::stoi(token);
         } catch (...) {
-            std::cerr << "Error RLBLOCK line when reading nset:" << line << std::endl;
+            std::cerr << "Error RLBLOCK line when reading nset:" << memmap.line << std::endl;
             return;
         }
         try {
             std::getline(iss, token, ',');
             maxset = std::stoi(token);
         } catch (...) {
-            std::cerr << "Error RLBLOCK line when reading maxset:" << line << std::endl;
+            std::cerr << "Error RLBLOCK line when reading maxset:" << memmap.line
+                      << std::endl;
             return;
         }
         try {
             std::getline(iss, token, ',');
             maxitems = std::stoi(token);
         } catch (...) {
-            std::cerr << "Error RLBLOCK line when reading maxitems:" << line << std::endl;
+            std::cerr << "Error RLBLOCK line when reading maxitems:" << memmap.line
+                      << std::endl;
             return;
         }
         try {
             std::getline(iss, token, ',');
             nperline = std::stoi(token);
         } catch (...) {
-            std::cerr << "Error RLBLOCK line when reading nperline:" << line << std::endl;
+            std::cerr << "Error RLBLOCK line when reading nperline:" << memmap.line
+                      << std::endl;
             return;
         }
 
         // Skip next two lines
-        std::getline(cfile, line); // (2i8,6g16.9)
-        std::getline(cfile, line); // (7g16.9)
+        memmap.seek_eol(); // (2i8,6g16.9)
+        memmap.seek_eol(); // (7g16.9)
 
         for (int i = 0; i < nset; i++) {
             // read real constant data in the form of:
             //        2       6  1.00000000     0.566900000E-07  0.00000000      0.000...
-            std::getline(cfile, line);
+            memmap.read_line();
             std::vector<double> rcon;
 
             // real constant number
             try {
-                rnum.push_back(std::stoi(line.substr(0, 8)));
+                rnum.push_back(std::stoi(memmap.line.substr(0, 8)));
             } catch (...) {
-                std::cerr << "Failed to read real constant ID when reading:" << line
+                std::cerr << "Failed to read real constant ID when reading:" << memmap.line
                           << std::endl;
                 return;
             }
 
-            int ncon = std::stoi(line.substr(8, 8));
+            int ncon = std::stoi(memmap.line.substr(8, 8));
             if (ncon > 6) {
                 for (int j = 0; j < 6; j++) {
-                    rcon.push_back(std::stod(line.substr(16 + 16 * j, 16)));
+                    rcon.push_back(std::stod(memmap.line.substr(16 + 16 * j, 16)));
                     ncon--;
                 }
 
-                std::getline(cfile, line);
+                memmap.read_line();
 
                 while (ncon > 0) {
                     for (int j = 0; j < 7 && ncon > 0; j++) {
-                        rcon.push_back(std::stod(line.substr(16 * j, 16)));
+                        rcon.push_back(std::stod(memmap.line.substr(16 * j, 16)));
                         ncon--;
                     }
                     if (ncon > 0) {
-                        std::getline(cfile, line);
+                        memmap.read_line();
                     }
                 }
             } else {
                 for (int j = 0; j < ncon; j++) {
-                    rcon.push_back(std::stod(line.substr(16 + 16 * j, 16)));
+                    rcon.push_back(std::stod(memmap.line.substr(16 + 16 * j, 16)));
                 }
             }
 
@@ -802,14 +972,19 @@ class Archive {
 
         // Get size of NBLOCK
         // Assumes line is at NBLOCK
-        // std::cout << "line: " << line << std::endl;
+        // std::cout << "line: " << memmap.line << std::endl;
         try {
             // Number of nodes is last item in string
-            n_nodes = std::stoi(line.substr(line.rfind(',') + 1));
+            n_nodes = std::stoi(memmap.line.substr(memmap.line.rfind(',') + 1));
         } catch (...) {
-            std::cerr << "Failed to read number of nodes when reading:" << line << std::endl;
+            std::cerr << "Failed to read number of nodes when reading:" << memmap.line
+                      << std::endl;
             return;
         }
+        if (debug) {
+            std::cout << "Reading " << n_nodes << " nodes" << std::endl;
+        }
+
         int *nnum_data = AllocateArray<int>(n_nodes);
         double *nodes_data = AllocateArray<double>(n_nodes * 3);
 
@@ -818,15 +993,13 @@ class Archive {
         double *node_angles_data = AllocateArray<double>(n_nodes * 3, true);
 
         // Get format of nblock
-        std::getline(cfile, line);
-        NodeBlockFormat nfmt = GetNodeBlockFormat(line);
-        if (debug) {
-            std::cout << "Reading " << n_nodes << " nodes" << std::endl;
-        }
+        memmap.read_line();
+        NodeBlockFormat nfmt = GetNodeBlockFormat(memmap.line);
 
         // Return actual number of nodes read and wrap the raw data
-        n_nodes = ReadNBlockCfile(
-            cfile,
+        // std::cout << memmap.tellg() << std::endl;
+        n_nodes = ReadNBlockMemMap(
+            memmap,
             nnum_data,
             nodes_data,
             node_angles_data,
@@ -836,17 +1009,18 @@ class Archive {
         nnum_arr = WrapNDarray<int, 1>(nnum_data, {n_nodes});
         nodes_arr = WrapNDarray<double, 2>(nodes_data, {n_nodes, 3});
         node_angles_arr = WrapNDarray<double, 2>(node_angles_data, {n_nodes, 3});
+        // std::cout << memmap.tellg() << std::endl;
 
         // Read final line, this is always "N,R5.3,LOC, -1," and store file
         // position. This is used for later access (or rewrite) of the node
         // block.
-        std::getline(cfile, line);
-        nblock_end = cfile.tellg();
+        memmap.seek_eol();
+        nblock_end = memmap.tellg();
 
         // Must mark nblock is read since we can only read one nblock per archive file.
         nblock_is_read = true;
         if (debug) {
-            std::cout << "Last line is: " << line << std::endl;
+            // std::cout << "Last line is: " << memmap.line << std::endl;
             std::cout << "NBLOCK complete, read " << n_nodes << " nodes." << std::endl;
         }
     }
@@ -858,7 +1032,7 @@ class Archive {
         }
 
         // Assumes line at CMBLOCK
-        std::istringstream iss(line);
+        std::istringstream iss(memmap.line);
         std::string token;
         std::vector<std::string> split_line;
 
@@ -867,7 +1041,7 @@ class Archive {
         }
 
         if (split_line.size() < 4) {
-            std::cerr << "Poor formatting of CMBLOCK: " << line << std::endl;
+            std::cerr << "Poor formatting of CMBLOCK: " << memmap.line << std::endl;
             return;
         }
 
@@ -875,15 +1049,16 @@ class Archive {
         try {
             ncomp = std::stoi(split_line[3].substr(0, split_line[3].find('!')).c_str());
         } catch (...) {
-            std::cerr << "Poor formatting of CMBLOCK: " << line << std::endl;
+            std::cerr << "Poor formatting of CMBLOCK: " << memmap.line << std::endl;
             return;
         }
 
-        std::getline(cfile, line);
+        memmap.read_line();
         int isz;
         try {
-            isz = std::stoi(
-                line.substr(line.find('i') + 1, line.find(')') - line.find('i') - 1));
+            isz = std::stoi(memmap.line.substr(
+                memmap.line.find('i') + 1,
+                memmap.line.find(')') - memmap.line.find('i') - 1));
         } catch (...) {
             std::cerr << "Failed to read integer size in CMBLOCK" << std::endl;
             return;
@@ -891,8 +1066,9 @@ class Archive {
 
         int nblock;
         try {
-            nblock = std::stoi(
-                line.substr(line.find('(') + 1, line.find('i') - line.find('(') - 1));
+            nblock = std::stoi(memmap.line.substr(
+                memmap.line.find('(') + 1,
+                memmap.line.find('i') - memmap.line.find('(') - 1));
         } catch (...) {
             std::cerr << "Failed to read number of integers per line in CMBLOCK" << std::endl;
             return;
@@ -903,12 +1079,12 @@ class Archive {
 
         for (int i = 0; i < ncomp; ++i) {
             if (i % nblock == 0) {
-                std::getline(cfile, line);
+                memmap.read_line();
             }
             try {
-                component[i] = std::stoi(line.substr(isz * (i % nblock), isz));
+                component[i] = std::stoi(memmap.line.substr(isz * (i % nblock), isz));
             } catch (...) {
-                std::cerr << "Failed to parse integer from CMBLOCK line: " << line
+                std::cerr << "Failed to parse integer from CMBLOCK line: " << memmap.line
                           << std::endl;
                 return;
             }
@@ -939,18 +1115,20 @@ class Archive {
             // Parse based on the first character rather than reading the entire
             // line. It's faster and the parsing logic is always based on the first
             // character
-            first_char = cfile.peek();
-#ifdef DEBUG
-            std::cout << "Read character: " << static_cast<char>(first_char) << std::endl;
-#endif
-            if (cfile.eof()) {
+
+            if (memmap.eof()) {
 #ifdef DEBUG
                 std::cout << "Reached EOF" << std::endl;
 #endif
                 break;
+            }
 
-            } else if (first_char == 'E' || first_char == 'e') {
-                std::getline(cfile, line);
+            first_char = memmap[0];
+#ifdef DEBUG
+            std::cout << "Read character: " << static_cast<char>(first_char) << std::endl;
+#endif
+            if (first_char == 'E' || first_char == 'e') {
+                memmap.read_line();
 
                 // E commands (ET or ETBLOCK)
 
@@ -959,43 +1137,47 @@ class Archive {
                 }
 
                 // Record element type
-                if (line.compare(0, 3, "ET,") == 0 || line.compare(0, 3, "et,") == 0) {
+                if (memmap.line.compare(0, 3, "ET,") == 0 ||
+                    memmap.line.compare(0, 3, "et,") == 0) {
                     ReadETLine();
                 } else if (
-                    line.compare(0, 6, "ETBLOC") == 0 || line.compare(0, 6, "etbloc") == 0) {
+                    memmap.line.compare(0, 6, "ETBLOC") == 0 ||
+                    memmap.line.compare(0, 6, "etbloc") == 0) {
                     ReadETBlock();
                 } else if (
-                    line.compare(0, 6, "EBLOCK") == 0 ||
-                    line.compare(0, 6, "eblock") == 0 && read_eblock) {
+                    memmap.line.compare(0, 6, "EBLOCK") == 0 ||
+                    memmap.line.compare(0, 6, "eblock") == 0 && read_eblock) {
                     ReadEBlock();
                 }
             } else if (first_char == 'K' || first_char == 'k') {
-                std::getline(cfile, line);
+                memmap.read_line();
                 if (debug) {
                     std::cout << "Read K" << std::endl;
                 }
 
                 // Record keyopt
-                if (line.compare(0, 5, "KEYOP") == 0 || line.compare(0, 5, "keyop") == 0) {
+                if (memmap.line.compare(0, 5, "KEYOP") == 0 ||
+                    memmap.line.compare(0, 5, "keyop") == 0) {
                     ReadKEYOPTLine();
                 }
 
             } else if (first_char == 'R' || first_char == 'r') {
-                std::getline(cfile, line);
+                memmap.read_line();
                 // test for RLBLOCK
                 if (debug) {
                     std::cout << "Read R" << std::endl;
                 }
 
                 // Record keyopt
-                if (line.compare(0, 5, "RLBLO") == 0 || line.compare(0, 5, "rlblo") == 0) {
+                if (memmap.line.compare(0, 5, "RLBLO") == 0 ||
+                    memmap.line.compare(0, 5, "rlblo") == 0) {
                     ReadRLBLOCK();
                 }
 
             } else if (first_char == 'N' || first_char == 'n') {
                 // store current position if we read in the node block
-                const int pos = cfile.tellg();
-                std::getline(cfile, line);
+                const int pos = memmap.tellg();
+                memmap.read_line();
                 // test for NBLOCK
 
                 if (debug) {
@@ -1003,19 +1185,21 @@ class Archive {
                 }
 
                 // Record node block
-                if (line.compare(0, 5, "NBLOC") == 0 || line.compare(0, 5, "nbloc") == 0) {
+                if (memmap.line.compare(0, 5, "NBLOC") == 0 ||
+                    memmap.line.compare(0, 5, "nbloc") == 0) {
                     ReadNBlock(pos);
                 }
 
             } else if (first_char == 'C' || first_char == 'c') {
-                std::getline(cfile, line);
+                memmap.read_line();
 
                 if (debug) {
                     std::cout << "Read C" << std::endl;
                 }
 
                 // Record component block
-                if (line.compare(0, 5, "CMBLO") == 0 || line.compare(0, 5, "cmblo") == 0) {
+                if (memmap.line.compare(0, 5, "CMBLO") == 0 ||
+                    memmap.line.compare(0, 5, "cmblo") == 0) {
                     // std::cout << "Reading CMBLOCK" << std::endl;
                     ReadCMBlock();
                 }
@@ -1024,17 +1208,13 @@ class Archive {
                     std::cout << "No match, continuing..." << std::endl;
                 }
                 // Skip remainder of the line
-                cfile.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+                memmap.seek_eol();
             }
         }
     }
 
     // Read line and return the position prior to reading the line
-    int ReadLine() {
-        int pos = cfile.tellg();
-        std::getline(cfile, line);
-        return pos;
-    }
+    int ReadLine() { return memmap.read_line(); }
 
     // Convert ansys style connectivity to VTK connectivity
     // type_ref is a mapping between ansys element types and VTK element types
@@ -1060,7 +1240,7 @@ class Archive {
         return nb::make_tuple(offset_arr, celltypes_arr, cells_arr);
     }
 
-    ~Archive() { cfile.close(); }
+    ~Archive() { memmap.close_file(); }
 
 }; // Archive
 
