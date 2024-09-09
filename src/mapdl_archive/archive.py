@@ -4,12 +4,14 @@ import io
 import logging
 import os
 import pathlib
+import re
 import shutil
-from typing import Any, Dict, List, Optional, Sequence, TypeVar, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, TypeVar, Union
 
 import numpy as np
 from numpy.typing import NDArray
-from pyvista import ID_TYPE, CellType, UnstructuredGrid
+from pyvista import ID_TYPE, CellType
+from pyvista.core.pointset import UnstructuredGrid
 
 from mapdl_archive import _archive, _reader
 from mapdl_archive.mesh import Mesh
@@ -25,6 +27,38 @@ log.setLevel("CRITICAL")
 
 U = TypeVar("U", np.int32, np.int64)
 T = TypeVar("T", np.float32, np.float64)
+
+
+def parse_nblock_format(input_string: str) -> Tuple[int, int, int, int]:
+    """Parse NBLOCK format."""
+    i_pattern_match = re.search(r"(\d+)i(\d+)", input_string)
+    if i_pattern_match:
+        repeat_count = int(i_pattern_match.group(1))
+        digit_width = int(i_pattern_match.group(2))
+        ilength = repeat_count * digit_width
+    else:
+        ilength = 0  # Default if pattern not found
+
+    # Regex to find the pattern after '6e'
+    match = re.search(r"6e([0-9]+\.[0-9]+(?:e[+\-]?[0-9]+)?)", input_string)
+    if match:
+        value = match.group(1)
+    else:
+        # Default to 'e2' if the specific pattern is not found
+        value = "1e2"  # Using 1 as a base for the default exponent value
+
+    # Extract the integer part, the decimal part, and the exponent
+    num_parts = re.match(r"([0-9]+)\.([0-9]+)(e[+\-]?[0-9]+)?", value)
+    if num_parts:
+        integer_part = int(num_parts.group(1))  # Convert integer part to int
+        decimal_part = int(num_parts.group(2))  # Convert decimal part to int
+        exponent = (
+            int(num_parts.group(3)[1:]) if num_parts.group(3) else 2
+        )  # Convert exponent part to int, default to 2
+    else:
+        integer_part, decimal_part, exponent = 0, 0, 2  # Default values
+
+    return ilength, integer_part, decimal_part, exponent
 
 
 class Archive(Mesh):
@@ -239,10 +273,8 @@ class Archive(Mesh):
     def overwrite_nblock(
         self,
         filename: Union[str, pathlib.Path],
-        node_id: NDArray[int],
         pos: NDArray[T],
         angles: Optional[NDArray[T]] = None,
-        sig_digits: int = 13,
     ) -> None:
         """Write out an archive file to disk while replacing its NBLOCK.
 
@@ -255,10 +287,8 @@ class Archive(Mesh):
         pos : np.ndarray
             Array of node coordinates.
         angles : numpy.ndarray, optional
-            Writes the node angles for each node when included.
-        sig_digits : int, default: 13
-            Number of significant digits to use when writing the nodes. Must be
-            greater than 0.
+            Writes the node angles for each node when included. When not
+            included, preserves original angles.
 
         Examples
         --------
@@ -272,13 +302,40 @@ class Archive(Mesh):
         >>> archive.overwrite_nblock("new_archive.cdb", archive.nnum, new_nodes)
 
         """
+        # Copy the file to the new location, next step is to modify it in-place
         filename = str(filename)
+        shutil.copy(self._filename, filename)
+
+        if pos.shape[0] != self.nodes.shape[0]:
+            raise ValueError(
+                f"Number of nodes ({pos.shape[0]}) must match the number of nodes in this "
+                f"archive ({self.nodes.shape[0]})"
+            )
+
+        # parse the node block format
+        with open(self.filename) as fid:
+            fid.seek(self._nblock_start)
+            block = fid.read(1024)
+            st, en = block.find("("), block.find(")") + 1
+            fmt_str = block[st:en]
+            ilen, width, d, e = parse_nblock_format(fmt_str)
+
+            # start of the node coordinates
+            start_nblock_coord = self._nblock_start + block.find("\n", st) + 1
+
+        if not pos.flags["C_CONTIGUOUS"]:
+            coord = np.ascontiguousarray(pos, dtype=np.float64)
+        else:
+            coord = pos.astype(np.float64, copy=False)
+
+        # start by writing out the file leading up to the nblock
         with open(self._filename, "rb") as src_file, open(filename, "wb") as dest_file:
-            # Copy the beginning of the file up to _nblock_start
-            dest_file.write(src_file.read(self._nblock_start))
+            dest_file.write(src_file.read(start_nblock_coord))
 
         # Write new nblock
-        write_nblock(filename, node_id, pos, angles=angles, mode="a", sig_digits=sig_digits)
+        _archive.overwrite_nblock(
+            str(self._filename), filename, coord, start_nblock_coord, ilen, width, d, e
+        )
 
         # Copy the rest of the original file
         with open(self._filename, "rb") as src_file, open(filename, "ab") as dest_file:
