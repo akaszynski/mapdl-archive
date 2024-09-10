@@ -610,273 +610,32 @@ void ResetMidside(
     }
 }
 
-double fast_10pow(size_t const exponent) {
-    static double pow10[10] = {
-        1.0,
-        10.0,
-        100.0,
-        1000.0,
-        10000.0,
-        100000.0,
-        1000000.0,
-        10000000.0,
-        100000000.0,
-        1000000000.0};
+// FORTRAN-like scientific notation string formatting
+void FormatWithExp(
+    char *buffer, size_t buffer_size, double value, int width, int precision, int num_exp) {
+    // Format the value using snprintf with given width and precision
+    snprintf(buffer, buffer_size, "% *.*E", width, precision, value);
 
-    if (exponent <= 9) {
-        // fast, look-up
-        return pow10[exponent];
-    } else {
-        // generic
-        double powered = 1.0;
-        for (size_t n = 0; n < exponent; ++n) {
-            powered = powered * 10.0;
+    // Find the 'E' in the output, which marks the beginning of the exponent.
+    char *exponent_pos = strchr(buffer, 'E');
+
+    // Check the current length of the exponent (after 'E+')
+    int exp_length = strlen(exponent_pos + 2);
+
+    // If the exponent is shorter than the desired number of digits
+    if (exp_length < num_exp) {
+        // Shift the exponent one place to the right and prepend a '0'
+        for (int i = exp_length + 1; i > 0; i--) {
+            exponent_pos[2 + i] = exponent_pos[1 + i];
         }
-        return powered;
+        exponent_pos[2] = '0';
+
+        // Shift the entire buffer to the left to remove the space added by snprintf
+        memmove(
+            buffer,
+            buffer + 1,
+            strlen(buffer)); // length of buffer not recalculated, using previous value
     }
-}
-
-size_t integer_str_length(uint64_t const value) {
-    // general solution (using it for big numbers)
-    if (value >= 10000000)
-        return floor(log10(value)) + 1;
-    // ugly, but optimal
-    // credits: https://stackoverflow.com/a/3069580
-    if (value >= 100000)
-        return 6;
-    if (value >= 10000)
-        return 5;
-    if (value >= 1000)
-        return 4;
-    if (value >= 100)
-        return 3;
-    if (value >= 10)
-        return 2;
-    return 1;
-}
-
-void write_integer(
-    char *put, uint64_t const value, bool const rounded_last_digit, bool const insert_nul) {
-
-    uint64_t int_value = value;
-    size_t const digits = integer_str_length(int_value);
-
-    for (size_t pos = 0; pos < digits; ++pos) {
-        size_t power = static_cast<size_t>(fast_10pow(digits - pos - 1));
-        unsigned int newvalue = static_cast<int>(int_value / power);
-
-        // round last digit
-        if (rounded_last_digit && pos == digits - 1) {
-            double lastval = round(int_value - static_cast<int>(int_value / 10.0) * 10.0);
-            newvalue = static_cast<int>(lastval);
-        }
-
-        put[pos] = newvalue + '0';
-
-        int_value = int_value - newvalue * power;
-    }
-    if (insert_nul) {
-        put[digits] = '\0';
-    }
-}
-
-inline bool is_negative(double const value) {
-    // a function that handles 0.0 and -0.0 (the test -0.0 < 0.0 fails)
-    return std::signbit(value);
-}
-
-void fill_with_char(char *put, char const fill, size_t const width) {
-    for (size_t n = 0; n < width; ++n) {
-        put[n] = fill;
-    }
-}
-
-void format_i(
-    char *put,
-    uint64_t const value,
-    size_t const width,
-    size_t const fill,
-    bool const plus_sign) {
-    size_t len = integer_str_length(value);
-
-    bool require_sign = is_negative(value) || plus_sign;
-    bool fill_chars = len < fill;
-
-    size_t maxlen = len + require_sign + fill_chars * (fill - len);
-
-    size_t pos = 0;
-    if (maxlen > width) {
-        fill_with_char(put, OVERFLOW_FILL_CHAR, width);
-        pos = pos + width;
-    } else {
-        // right-alignment whitespace
-        for (; pos < width - maxlen; ++pos) {
-            put[pos] = ' ';
-        }
-
-        // minus sign
-        if (require_sign) {
-            if (is_negative(value)) {
-                put[pos] = '-';
-            } else {
-                put[pos] = '+';
-            }
-
-            pos = pos + 1;
-        }
-
-        // leading zeroes
-        if (fill_chars) {
-            for (size_t fillcount = 0; fillcount < fill - len; ++fillcount, ++pos) {
-                put[pos] = '0';
-            }
-        }
-
-        // integer
-        bool const NOT_ROUNDED = false;
-        bool const INSERT_NUL = false;
-        write_integer(put + pos, value, NOT_ROUNDED, INSERT_NUL);
-    }
-    put[width] = '\0';
-}
-
-int base10_exponent(double const value) {
-    double const absvalue = fabs(value);
-
-    // general case, absvalue >= 1E+6 or < 1E-6
-    if (absvalue >= 1000000.0 || absvalue < 0.000001) {
-        return floor(log10(absvalue));
-    } else {
-        if (absvalue >= 100000.0)
-            return 5;
-        if (absvalue >= 10000.0)
-            return 4;
-        if (absvalue >= 1000.0)
-            return 3;
-        if (absvalue >= 100.0)
-            return 2;
-        if (absvalue >= 10.0)
-            return 1;
-        if (absvalue >= 1.0)
-            return 0;
-        if (absvalue >= 0.1)
-            return -1;
-        if (absvalue >= 0.01)
-            return -2;
-        if (absvalue >= 0.001)
-            return -3;
-        if (absvalue >= 0.0001)
-            return -4;
-        if (absvalue >= 0.00001)
-            return -5;
-        return -6;
-    }
-}
-
-void format_e(
-    char *put,
-    double const value,
-    size_t const width,
-    size_t const precision,
-    char const expchar,
-    size_t const exponent_width,
-    bool const plus_sign) {
-    assert(exponent_width > 0);
-
-    if (value == 0.0) {
-        strcpy(put, " 0.");
-        for (int i = 0; i < precision; ++i) {
-            put[3 + i] = '0';
-        }
-        strcpy(put + 3 + precision, "E+000");
-        return;
-    }
-
-    double absvalue = fabs(value);
-    bool require_sign = is_negative(value) || plus_sign;
-
-    // minimum length without leading zero
-    // . precision D+00, ., D, and + = 3
-    size_t const FORMATCHARS = 3;
-    size_t const MINLEN = require_sign + FORMATCHARS + precision + exponent_width;
-
-    // check whether there's space for a leading zero
-    bool include_leading_zero = width > MINLEN;
-    size_t const LEN = MINLEN + include_leading_zero;
-
-    size_t pos = 0;
-    if (LEN > width) {
-        fill_with_char(put, OVERFLOW_FILL_CHAR, width);
-        pos = pos + width;
-    } else {
-        // calculate the fractional part and the exponent
-        double finalnumber;
-        int const exponent = base10_exponent(value);
-        // print exponent, since the number starts with 0.
-        int const expfort = exponent + 1;
-        // power of 10 to extract the values to print in the space given the precision
-        double power;
-        if (exponent >= 0) {
-            if (expfort >= static_cast<int>(precision)) {
-                power = 1.0 / static_cast<double>(fast_10pow(expfort - precision));
-            } else {
-                power = static_cast<double>(fast_10pow(precision - expfort));
-            }
-        } else {
-            // -exponent + 1 = numbers of zeroes in the fractional part
-            int const zeroes = -(exponent + 1);
-            power = static_cast<double>(fast_10pow(zeroes + precision));
-        }
-
-        // final number after the decimal separator
-        finalnumber = absvalue * power;
-        uint64_t intval = static_cast<uint64_t>(finalnumber);
-
-        // right-alignment whitespace
-        if (width > LEN) {
-            for (; pos < width - LEN; ++pos) {
-                put[pos] = ' ';
-            }
-        }
-
-        // minus sign
-        if (require_sign) {
-            if (is_negative(value)) {
-                put[pos] = '-';
-            } else {
-                put[pos] = '+';
-            }
-
-            pos = pos + 1;
-        }
-
-        // leading zero
-        if (include_leading_zero) {
-            put[pos] = '0';
-            pos = pos + 1;
-        }
-        put[pos] = '.';
-        pos = pos + 1;
-
-        // number value
-        format_i(put + pos, intval, precision, 0, false);
-        pos = pos + precision;
-
-        // exponent sign
-        put[pos] = expchar;
-        pos = pos + 1;
-        if (expfort >= 0) {
-            put[pos] = '+';
-        } else {
-            put[pos] = '-';
-        }
-        pos = pos + 1;
-
-        // exponent value
-        format_i(put + pos, abs(expfort), exponent_width, exponent_width, false);
-        pos = pos + exponent_width;
-    }
-    put[pos] = '\0';
 }
 
 void OverwriteNblock(
@@ -884,10 +643,10 @@ void OverwriteNblock(
     const std::string &filename_out,
     const NDArray<const double, 2> coord,
     int nblock_start,
-    int ilen, // Number of characters to preserve at the start of each line
-    int l,    // Total length of each number field
-    int d,    // Number of digits after the decimal
-    int e     // Number of digits in the exponent notation
+    int ilen,      // Number of characters to preserve at the start of each line
+    int width,     // Total length of each number field
+    int precision, // Number of digits after the decimal
+    int num_exp    // Number of digits in the exponent notation
 ) {
     std::fstream file_in(filename_in, std::ios::in | std::ios::binary);
     if (!file_in.is_open()) {
@@ -941,12 +700,16 @@ void OverwriteNblock(
         for (int j = 0; j < 3; ++j) { // Assuming each node has three coordinates (x, y, z)
             char coord_buffer[100];   // Enough for one coordinate
 
-            format_e(coord_buffer, coord_data[i * 3 + j], l, d, 'e', e, false);
+            FormatWithExp(
+                coord_buffer, 100, coord_data[i * 3 + j], width, precision, num_exp);
+
             buffer.append(coord_buffer);
         }
 
-        // add in the remainder of the line
-        if (line.size() > buffer.size()) {
+        // add in the remainder of the line (but not including end of line)
+        if (line.size() > buffer.size() + precision) {
+            // Annoyingly we read in \r and shouldn't include that
+            line.erase(std::remove(line.begin(), line.end(), '\r'), line.end());
             buffer.append(line.substr(buffer.size()));
             buffer.append(line_ending);
         } else {

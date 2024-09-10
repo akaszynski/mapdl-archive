@@ -312,16 +312,17 @@ class Archive(Mesh):
                 f"archive ({self.nodes.shape[0]})"
             )
 
-        # parse the node block format
-        with open(self.filename) as fid:
+        # Parse the node block format. Despite being ASCII, read in binary to
+        # catch DOS style line endings
+        with open(self.filename, "rb") as fid:
             fid.seek(self._nblock_start)
             block = fid.read(1024)
-            st, en = block.find("("), block.find(")") + 1
+            st, en = block.find(b"("), block.find(b")") + 1
             fmt_str = block[st:en]
-            ilen, width, d, e = parse_nblock_format(fmt_str)
+            ilen, width, d, e = parse_nblock_format(fmt_str.decode())
 
             # start of the node coordinates
-            start_nblock_coord = self._nblock_start + block.find("\n", st) + 1
+            start_nblock_coord = self._nblock_start + block.find(b"\n", st) + 1
 
         if not pos.flags["C_CONTIGUOUS"]:
             coord = np.ascontiguousarray(pos, dtype=np.float64)
