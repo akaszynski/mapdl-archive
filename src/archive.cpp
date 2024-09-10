@@ -1,7 +1,9 @@
 #include <algorithm>
+#include <cmath>
+#include <cstring>
+#include <fstream>
 #include <inttypes.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include <vector>
 
@@ -28,6 +30,9 @@
 #define VTK_QUADRATIC_HEXAHEDRON 25
 #define VTK_QUADRATIC_WEDGE 26
 #define VTK_QUADRATIC_PYRAMID 27
+
+// character to fill when the number width overflows specified width
+char const OVERFLOW_FILL_CHAR = '*';
 
 char *create_format_str(int fields, int sig_digits) {
     static char format_str[64]; // Buffer for our format string
@@ -605,10 +610,129 @@ void ResetMidside(
     }
 }
 
+// FORTRAN-like scientific notation string formatting
+void FormatWithExp(
+    char *buffer, size_t buffer_size, double value, int width, int precision, int num_exp) {
+    // Format the value using snprintf with given width and precision
+    snprintf(buffer, buffer_size, "% *.*E", width, precision, value);
+
+    // Find the 'E' in the output, which marks the beginning of the exponent.
+    char *exponent_pos = strchr(buffer, 'E');
+
+    // Check the current length of the exponent (after 'E+')
+    int exp_length = strlen(exponent_pos + 2);
+
+    // If the exponent is shorter than the desired number of digits
+    if (exp_length < num_exp) {
+        // Shift the exponent one place to the right and prepend a '0'
+        for (int i = exp_length + 1; i > 0; i--) {
+            exponent_pos[2 + i] = exponent_pos[1 + i];
+        }
+        exponent_pos[2] = '0';
+
+        // Shift the entire buffer to the left to remove the space added by snprintf
+        memmove(
+            buffer,
+            buffer + 1,
+            strlen(buffer)); // length of buffer not recalculated, using previous value
+    }
+}
+
+void OverwriteNblock(
+    const std::string &filename_in,
+    const std::string &filename_out,
+    const NDArray<const double, 2> coord,
+    int nblock_start,
+    int ilen,      // Number of characters to preserve at the start of each line
+    int width,     // Total length of each number field
+    int precision, // Number of digits after the decimal
+    int num_exp    // Number of digits in the exponent notation
+) {
+    std::fstream file_in(filename_in, std::ios::in | std::ios::binary);
+    if (!file_in.is_open()) {
+        throw std::runtime_error("Failed to open file: " + filename_in);
+    }
+
+    std::fstream file_out(filename_out, std::ios::in | std::ios::out | std::ios::binary);
+    if (!file_in.is_open()) {
+        throw std::runtime_error("Failed to open file: " + filename_out);
+    }
+
+    const double *coord_data = coord.data();
+    const int n_nodes = coord.size() / 3;
+
+    // and the end of the new file
+    file_out.seekg(0, std::ios::end);
+
+    // Read the first line to detect the line ending
+    file_in.seekg(nblock_start, std::ios::beg);
+    std::string line_ending;
+    char ch;
+    while (file_in.get(ch)) {
+        if (ch == '\n' || ch == '\r') {
+            line_ending += ch;
+            if (ch == '\r' && file_in.peek() == '\n') {
+                file_in.get(ch);
+                line_ending += ch;
+            }
+            break;
+        }
+    }
+
+    if (line_ending.empty()) {
+        line_ending = "\n"; // Default to LF if no line ending is detected
+    }
+
+    // Reset the file pointer to the start of the node block
+    file_in.seekg(nblock_start, std::ios::beg);
+
+    std::string buffer;
+    buffer.reserve(1024);
+
+    std::string line;
+    for (int i = 0; i < n_nodes; ++i) {
+        std::getline(file_in, line);
+
+        // Prepare buffer with the initial characters preserved
+        buffer.assign(line.substr(0, ilen));
+
+        // Append formatted coordinates
+        for (int j = 0; j < 3; ++j) { // Assuming each node has three coordinates (x, y, z)
+            char coord_buffer[100];   // Enough for one coordinate
+
+            FormatWithExp(
+                coord_buffer, 100, coord_data[i * 3 + j], width, precision, num_exp);
+
+            buffer.append(coord_buffer);
+        }
+
+        // add in the remainder of the line (but not including end of line)
+        if (line.size() > buffer.size() + precision) {
+            // Annoyingly we read in \r and shouldn't include that
+            line.erase(std::remove(line.begin(), line.end(), '\r'), line.end());
+            buffer.append(line.substr(buffer.size()));
+            buffer.append(line_ending);
+        } else {
+            buffer.append(line_ending);
+        }
+
+        file_out.write(buffer.c_str(), buffer.size());
+    }
+
+    // write last line noting end of node block
+    buffer.assign("N,R5.3,LOC,       -1,");
+    buffer.append(line_ending);
+    file_out.write(buffer.c_str(), buffer.size());
+
+    file_in.close();
+    file_out.close();
+}
+
 NB_MODULE(_archive, m) {
     m.def("write_nblock", &WriteNblock<float>);
     m.def("write_nblock", &WriteNblock<double>);
     m.def("write_eblock", &WriteEblock);
+    m.def("overwrite_nblock", &OverwriteNblock);
     m.def("cmblock_items_from_array", &CmblockItems);
     m.def("reset_midside", &ResetMidside<float>);
     m.def("reset_midside", &ResetMidside<double>);
