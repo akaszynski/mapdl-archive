@@ -563,7 +563,7 @@ int ans_to_vtk(
             add_line(&elem[off], false);
             // should never reach here
         } // end of switch
-    }     // end of loop
+    } // end of loop
 
     /* printf("Done\n"); */
     offset[nelem] = vtk_data.loc;

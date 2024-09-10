@@ -1,5 +1,6 @@
 """Test ``mapdl_archive/archive.py``."""
 
+import filecmp
 import os
 import pathlib
 import sys
@@ -40,6 +41,7 @@ TEST_PATH = os.path.dirname(os.path.abspath(__file__))
 TESTFILES_PATH = os.path.join(TEST_PATH, "test_data")
 TESTFILES_PATH_PATHLIB = pathlib.Path(TESTFILES_PATH)
 DAT_FILE = os.path.join(TESTFILES_PATH, "Panel_Transient.dat")
+BEAM186_DOS_FILE = os.path.join(TESTFILES_PATH, "Beam_186TetQuadAnglesDOS.cdb")
 
 
 @pytest.fixture()
@@ -500,16 +502,35 @@ def test_overwrite_nblock(tmp_path: Path, hex_archive: Archive) -> None:
 
     filename = tmp_path / "tmp.cdb"
     nodes = np.random.random(hex_archive.nodes.shape)
-    hex_archive.overwrite_nblock(
-        filename,
-        hex_archive.nnum,
-        nodes,
-    )
+    hex_archive.overwrite_nblock(filename, nodes)
 
     archive_new = Archive(filename)
     assert np.allclose(nodes, archive_new.grid.points)
     assert np.allclose(hex_archive.nnum, archive_new.nnum)
+
+    assert hex_archive.node_angles is not None
+    assert archive_new.node_angles is not None
+    assert np.allclose(hex_archive.node_angles, archive_new.node_angles)
+
     assert np.allclose(hex_archive.grid.cells.size, archive_new.grid.cells.size)
+
+    # overwrite with original nodes (tests for zeros)
+    hex_archive.overwrite_nblock(filename, hex_archive.nodes)
+
+
+def test_overwrite_nblock(tmp_path: Path) -> None:
+    # ensure that we capture the entire NBLOCK
+    arc = mapdl_archive.Archive(BEAM186_DOS_FILE)
+
+    filename = tmp_path / "tmp.cdb"
+    arc.overwrite_nblock(filename, arc.nodes)
+
+    arc_new = mapdl_archive.Archive(filename)
+    assert np.allclose(arc_new.nodes, arc.nodes)
+
+    assert arc.node_angles is not None
+    assert arc_new.node_angles is not None
+    assert np.allclose(arc_new.node_angles, arc.node_angles)
 
 
 def test_pathlib_filename_property(pathlib_archive: Archive) -> None:

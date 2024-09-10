@@ -36,3 +36,13 @@ def reset_midside(
     offset: NDArray[np.int64],
     points: NDArray[T],
 ) -> None: ...
+def overwrite_nblock(
+    filename_in: str,
+    filename_out: str,
+    nodes: NDArray[np.float64],
+    nblock_start: int,
+    ilen: int,
+    width: int,
+    d: int,
+    e: int,
+) -> None: ...

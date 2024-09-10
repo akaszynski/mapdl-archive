@@ -712,7 +712,7 @@ class Mesh:
         """Return the number of nodes."""
         if not self._has_nodes:
             return 0
-        return self.nodes.shape[0]
+        return int(self.nodes.shape[0])
 
     @property
     def n_elem(self) -> int:
