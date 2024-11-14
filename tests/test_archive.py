@@ -42,6 +42,8 @@ TESTFILES_PATH = os.path.join(TEST_PATH, "test_data")
 TESTFILES_PATH_PATHLIB = pathlib.Path(TESTFILES_PATH)
 DAT_FILE = os.path.join(TESTFILES_PATH, "Panel_Transient.dat")
 BEAM186_DOS_FILE = os.path.join(TESTFILES_PATH, "Beam_186TetQuadAnglesDOS.cdb")
+CORRUPT_CDB_FILE_A = os.path.join(TESTFILES_PATH, "corrupt_a.cdb")
+CORRUPT_CDB_FILE_B = os.path.join(TESTFILES_PATH, "corrupt_b.cdb")
 
 
 @pytest.fixture()
@@ -541,3 +543,17 @@ def test_filename_property_is_string(pathlib_archive: Archive) -> None:
     filename = TESTFILES_PATH_PATHLIB / "ErnoRadiation.cdb"
     arch = Archive(filename)
     assert isinstance(arch.filename, str)
+
+
+def test_corrupt_cdb_coordinates() -> None:
+    with pytest.raises(
+        RuntimeError, match="Failed to read NBLOCK coordinates. Last node number read was 100"
+    ):
+        Archive(CORRUPT_CDB_FILE_A)
+
+
+def test_corrupt_cdb_node_number() -> None:
+    with pytest.raises(
+        RuntimeError, match="Failed to read NBLOCK node number. Last node number read was 100"
+    ):
+        Archive(CORRUPT_CDB_FILE_B)
