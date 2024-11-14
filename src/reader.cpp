@@ -497,6 +497,18 @@ int ReadNBlockMemMap(
         }
 
         i_val = fast_atoi(memmap.current, d_size[0]);
+
+        // Check if the node number is valid
+        if (i_val < 1) {
+            std::string error_message = "Failed to read NBLOCK node number.";
+            if (i > 0) {
+                error_message +=
+                    " Last node number read was " + std::to_string(nnum[i - 1]) + ".";
+            }
+            error_message += " CDB is likely corrupt.";
+            throw std::runtime_error(error_message);
+        }
+
 #ifdef DEBUG
         std::cout << "Node number " << i_val << std::endl;
 #endif
@@ -508,6 +520,17 @@ int ReadNBlockMemMap(
 
         // read nodes
         int n_read = (count - d_size[0] * 3) / f_size;
+        // Check if the node number is valid
+        if (n_read > 6) {
+            std::string error_message = "Failed to read NBLOCK coordinates.";
+            if (i > 0) {
+                error_message +=
+                    " Last node number read was " + std::to_string(nnum[i - 1]) + ".";
+            }
+            error_message += " CDB is likely corrupt.";
+            throw std::runtime_error(error_message);
+        }
+
 #ifdef DEBUG
         std::cout << "n_read: " << n_read << std::endl;
 #endif
@@ -1010,6 +1033,10 @@ class Archive {
         nodes_arr = WrapNDarray<double, 2>(nodes_data, {n_nodes, 3});
         node_angles_arr = WrapNDarray<double, 2>(node_angles_data, {n_nodes, 3});
         // std::cout << memmap.tellg() << std::endl;
+
+        if (debug) {
+            std::cout << "Finished reading " << n_nodes << " nodes" << std::endl;
+        }
 
         // Read final line, this is always "N,R5.3,LOC, -1," and store file
         // position. This is used for later access (or rewrite) of the node
