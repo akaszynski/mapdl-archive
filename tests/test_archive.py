@@ -18,9 +18,10 @@ import mapdl_archive
 from mapdl_archive import Archive, _archive, examples, _reader
 
 # Windows issues Python 3.12
-WIN_PY312 = sys.version_info.minor == 12 and os.name == "nt"
+WINDOWS = os.name == "nt"
+WIN_PY312 = sys.version_info.minor == 12 and WINDOWS
 skip_plotting = pytest.mark.skipif(
-    WIN_PY312 or not system_supports_plotting(),  # type: ignore
+    WINDOWS or not system_supports_plotting(),  # type: ignore
     reason="Requires active X Server",
 )
 

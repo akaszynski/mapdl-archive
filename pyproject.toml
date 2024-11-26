@@ -17,7 +17,8 @@ classifiers = [
   "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
-  "Programming Language :: Python :: 3.12"
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13"
 ]
 dependencies = [
   "pyvista>=0.41.1"
@@ -33,7 +34,7 @@ Repository = "https://github.com/akaszynski/mapdl-archive"
 
 [tool.cibuildwheel]
 archs = ["auto64"]  # 64-bit only
-skip = "cp37-* cp38-* cp313-* pp* *musllinux*"  # 3.9 - 3.13 w/o PyPy and musl-based
+skip = "cp38-* cp314-* pp* *musllinux*"  # build 3.9 - 3.13 w/o PyPy and musl-based
 test-command = "pytest {project}/tests"
 test-requires = "pytest"
 
