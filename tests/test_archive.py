@@ -4,8 +4,9 @@ import filecmp
 import os
 import pathlib
 import sys
-from typing import Union
+from typing import Union, Any, Dict
 
+from numpy.typing import NDArray
 from pathlib import Path
 import numpy as np
 import pytest
@@ -66,6 +67,18 @@ def all_solid_cells_archive() -> Archive:
 @pytest.fixture(scope="module")
 def all_solid_cells_archive_linear() -> Archive:
     return Archive(os.path.join(TESTFILES_PATH, "all_solid_cells.cdb"), force_linear=True)
+
+
+def compare_dicts_with_arrays(
+    dict1: Dict[str, NDArray[Any]], dict2: Dict[str, NDArray[Any]]
+) -> bool:
+    """Compare two dictionaries containing arrays."""
+    if dict1.keys() != dict2.keys():
+        return False
+    for key in dict1:
+        if not np.array_equal(dict1[key], dict2[key]):
+            return False
+    return True
 
 
 def test_load_dat() -> None:
@@ -558,3 +571,22 @@ def test_corrupt_cdb_node_number() -> None:
         RuntimeError, match="Failed to read NBLOCK node number. Last node number read was 100"
     ):
         Archive(CORRUPT_CDB_FILE_B)
+
+
+def test_save_as_numpy(tmp_path: Path, hex_archive: Archive) -> None:
+    """Test saving to and loading from a npz file."""
+    npz_path = tmp_path / "data.npz"
+    hex_archive.save_as_numpy(npz_path)
+    hex_in = Archive(npz_path)
+
+    assert np.array_equal(hex_in._nnum, hex_archive._nnum)
+    assert np.array_equal(hex_in._nodes, hex_archive._nodes)
+    assert np.array_equal(hex_in._node_angles, hex_archive._node_angles)
+    assert np.array_equal(hex_in._elem, hex_archive._elem)
+    assert np.array_equal(hex_in._elem_off, hex_archive._elem_off)
+    assert np.array_equal(hex_in._ekey, hex_archive._ekey)
+    assert np.array_equal(hex_in._rnum, hex_archive._rnum)
+    assert compare_dicts_with_arrays(hex_in._node_comps, hex_archive._node_comps)
+    assert compare_dicts_with_arrays(hex_in._elem_comps, hex_archive._elem_comps)
+    assert hex_in._rdat == hex_archive._rdat
+    # assert compare_dicts_with_arrays(hex_in._keyopt, hex_archive._keyopt)
