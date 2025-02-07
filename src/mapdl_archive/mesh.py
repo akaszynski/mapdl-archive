@@ -124,12 +124,12 @@ class Mesh:
         self._etype_id: Optional[NDArray[np.int32]] = None  # cached element type id
 
         # Always set on init
-        self._nnum: NDArray[np.int32] = nnum
-        self._nodes: NDArray[np.float64] = nodes
-        self._node_angles: NDArray[np.float64] = node_angles
-        self._elem: NDArray[np.int32] = elem
-        self._elem_off: NDArray[np.int32] = elem_off
-        self._ekey: NDArray[np.int32] = ekey
+        self._nnum = nnum
+        self._nodes = nodes
+        self._node_angles = node_angles
+        self._elem = elem
+        self._elem_off = elem_off
+        self._ekey = ekey
 
         # optional
         self._node_comps: COMP_DICT = node_comps
@@ -169,7 +169,7 @@ class Mesh:
 
     def _parse_vtk(
         self,
-        allowable_types: Optional[Union[List[str], List[int]]] = None,
+        allowable_types: Optional[List[int]] = None,
         force_linear: bool = False,
         null_unallowed: bool = False,
         fix_midside: bool = True,
@@ -663,7 +663,7 @@ class Mesh:
         filename: Union[str, Path],
         binary: bool = True,
         force_linear: bool = False,
-        allowable_types: Optional[Union[List[int], List[str]]] = None,
+        allowable_types: Optional[Union[List[int]]] = None,
         null_unallowed: bool = False,
     ) -> None:
         """Save the geometry as a vtk file.

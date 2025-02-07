@@ -75,35 +75,27 @@ class Archive(Mesh):
     ----------
     filename : string, pathlib.Path
         Filename of block formatted cdb file
-
     read_parameters : bool, default: False
         Optionally read parameters from the archive file.
-
     parse_vtk : bool, default: True
         When ``True``, parse the raw data into to VTK format.
-
     force_linear : bool, default: False
         This parser creates quadratic elements if available. Set
         this to ``True`` to always create linear elements.
-
     allowable_types : list, optional
         Allowable element types.  Defaults to all valid element
         types in ``mapdl_archive.elements.valid_types``
 
         See ``help(mapdl_archive.elements)`` for available element types.
-
     null_unallowed : bool, default: False
         Elements types not matching element types will be stored
         as empty (null) elements.  Useful for debug or tracking
         element numbers.
-
     verbose : bool, optional
         Print out each step when reading the archive file.  Used for
         debug purposes and defaults to ``False``.
-
     name : str, optional
         Internally used parameter used to have a custom ``__repr__``.
-
     read_eblock : bool, default: True
         Read the element block.
 
@@ -150,7 +142,7 @@ class Archive(Mesh):
         read_parameters: bool = False,
         parse_vtk: bool = True,
         force_linear: bool = False,
-        allowable_types: Optional[Union[List[str], List[int]]] = None,
+        allowable_types: Optional[Union[List[int]]] = None,
         null_unallowed: bool = False,
         verbose: bool = False,
         name: str = "",
@@ -160,34 +152,60 @@ class Archive(Mesh):
         self._read_parameters: bool = read_parameters
         self._filename: pathlib.Path = pathlib.Path(filename)
         self._name: str = name
-        self._archive = _reader.Archive(
-            self.filename,
-            read_params=read_parameters,
-            debug=verbose,
-            read_eblock=read_eblock,
-        )
-        self._archive.read()
+        self._archive: Optional[_reader.Archive] = None
 
-        super().__init__(
-            self._archive.nnum,
-            self._archive.nodes,
-            self._archive.node_angles,
-            self._archive.elem,
-            self._archive.elem_off,
-            np.array(self._archive.elem_type),
-            np.array(self._archive.rnum),
-            node_comps=self._archive.node_comps,
-            elem_comps=self._archive.elem_comps,
-            rdat=self._archive.rdat,
-            keyopt=self._archive.keyopt,
-        )
+        suffix = self._filename.suffix
+        if suffix in [".cdb", ".dat", ".inp"]:
+            self._archive = _reader.Archive(
+                self.filename,
+                read_params=read_parameters,
+                debug=verbose,
+                read_eblock=read_eblock,
+            )
+            self._archive.read()
 
-        self._allowable_types: Optional[Union[List[str], List[int]]] = allowable_types
+            super().__init__(
+                self._archive.nnum,
+                self._archive.nodes,
+                self._archive.node_angles,
+                self._archive.elem,
+                self._archive.elem_off,
+                np.array(self._archive.elem_type),
+                np.array(self._archive.rnum),
+                node_comps=self._archive.node_comps,
+                elem_comps=self._archive.elem_comps,
+                rdat=self._archive.rdat,
+                keyopt=self._archive.keyopt,
+            )
+        elif suffix == ".npz":
+            data = np.load(filename, allow_pickle=True)
+            super().__init__(
+                data["nnum"],
+                data["nodes"],
+                data["node_angles"],
+                data["elem"],
+                data["elem_off"],
+                data["ekey"],
+                data["rnum"],
+                node_comps={k: v.tolist() for k, v in data["node_comps"].item().items()},
+                elem_comps={k: v.tolist() for k, v in data["elem_comps"].item().items()},
+                rdat=data["rdat"].tolist(),
+                keyopt={k: v for k, v in data["keyopt"].item().items()},
+            )
+        else:
+            raise ValueError(
+                f'File extension should end in ".inp", ".cdb", ".dat", or ".npz", not {suffix}'
+            )
+
+        self._allowable_types = allowable_types
         self._force_linear: bool = force_linear
         self._null_unallowed: bool = null_unallowed
 
         if parse_vtk:
             self._grid = self._parse_vtk(allowable_types, force_linear, null_unallowed)
+
+    def _read_from_numpy(self, filename: pathlib.Path) -> None:
+        """Read and initialize from a numpy npz file."""
 
     @property
     def filename(self) -> str:
@@ -263,11 +281,15 @@ class Archive(Mesh):
     @property
     def _nblock_start(self) -> int:
         """Return the start of the node block in the original file."""
+        if self._archive is None:
+            raise AttributeError("Node block start unavailable.")
         return self._archive.nblock_start
 
     @property
     def _nblock_end(self) -> int:
         """Return the end of the node block in the original file."""
+        if self._archive is None:
+            raise AttributeError("Node block start unavailable.")
         return self._archive.nblock_end
 
     def overwrite_nblock(
@@ -345,17 +367,40 @@ class Archive(Mesh):
 
             shutil.copyfileobj(src_file, dest_file)
 
-    def save_as_numpy(self, filename: str) -> None:
+    def save_as_numpy(self, filename: Union[str, pathlib.Path]) -> None:
         """Save this archive as a numpy "npz" file.
 
         This reduces the file size by around 50% compared with the Ansys
         blocked file format.
 
+        Parameters
+        ----------
+        filename : str | pathlib.Path
+            Path to save the numpy file.
+
+        Examples
+        --------
+        >>>
+
         """
+        filename = str(filename)
         if not filename.endswith("npz"):
             raise ValueError("Filename must end with '.npz'")
 
-        raise RuntimeError("save_as_numpy as been deprecated")
+        np.savez(
+            filename,
+            nnum=self._nnum,
+            nodes=self._nodes,
+            node_angles=self._node_angles,
+            elem=self._elem,
+            elem_off=self._elem_off,
+            ekey=self._ekey,
+            rnum=self._rnum,
+            node_comps=self._node_comps,  # type: ignore
+            elem_comps=self._elem_comps,  # type: ignore
+            rdat=self._rdat,
+            keyopt=self._keyopt,  # type: ignore
+        )
 
 
 def save_as_archive(
@@ -538,7 +583,7 @@ def save_as_archive(
             nadd = np.sum(nodenum == -1)
             end_num = start_num + nadd
             log.info(
-                "FEM missing some node numbers.  Adding node numbering " "from %d to %d",
+                "FEM missing some node numbers.  Adding node numbering from %d to %d",
                 start_num,
                 end_num,
             )
@@ -552,7 +597,7 @@ def save_as_archive(
         if not allow_missing:
             raise RuntimeError('Missing node numbers. Exiting due "allow_missing=False"')
         log.info(
-            "No ANSYS element numbers set in input. " "Adding default range starting from %d",
+            "No ANSYS element numbers set in input. Adding default range starting from %d",
             enum_start,
         )
         enum = np.arange(1, ncells + 1, dtype=np.int32)
@@ -580,7 +625,7 @@ def save_as_archive(
         mtype = grid.cell_data["ansys_material_type"]
     else:
         log.info(
-            "No ANSYS element numbers set in input.  " "Adding default range starting from %d",
+            "No ANSYS element numbers set in input.  Adding default range starting from %d",
             mtype_start,
         )
         mtype = np.arange(1, ncells + 1, dtype=np.int32)
