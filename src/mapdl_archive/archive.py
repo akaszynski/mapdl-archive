@@ -190,7 +190,7 @@ class Archive(Mesh):
                 node_comps={k: v.tolist() for k, v in data["node_comps"].item().items()},
                 elem_comps={k: v.tolist() for k, v in data["elem_comps"].item().items()},
                 rdat=data["rdat"].tolist(),
-                keyopt={k: v.tolist() for k, v in data["keyopt"].item().items()},
+                keyopt={k: v for k, v in data["keyopt"].item().items()},
             )
         else:
             raise ValueError(
