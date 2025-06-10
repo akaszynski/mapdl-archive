@@ -135,8 +135,8 @@ void WriteEblock(
     const NDArray<const int, 1> rcon_arr,          // real constant ID array
     const NDArray<const int, 1> elem_nnodes_arr,   // number of nodes per element
     const NDArray<const uint8_t, 1> celltypes_arr, // VTK celltypes array
-    const NDArray<const int64_t, 1> offset_arr,    // VTK offset array
-    const NDArray<const int64_t, 1> cells_arr,     // VTK cell connectivity array
+    const NDArray<const int, 1> offset_arr,        // VTK offset array
+    const NDArray<const int, 1> cells_arr,         // VTK cell connectivity array
     const NDArray<const int, 1> typenum_arr, // ANSYS type number (e.g. 187 for SOLID187)
     const NDArray<const int, 1> nodenum_arr, // ANSYS node numbering
     std::string &mode) {
@@ -149,8 +149,8 @@ void WriteEblock(
     const int *rcon = rcon_arr.data();
     const int *elem_nnodes = elem_nnodes_arr.data();
     const uint8_t *celltypes = celltypes_arr.data();
-    const int64_t *offset = offset_arr.data();
-    const int64_t *cells = cells_arr.data();
+    const int *offset = offset_arr.data();
+    const int *cells = cells_arr.data();
     const int *typenum = typenum_arr.data();
     const int *nodenum = nodenum_arr.data();
 
@@ -429,17 +429,17 @@ NDArray<int, 1> CmblockItems(const NDArray<const int, 1> array) {
 // Resets the midside nodes of the tetrahedral starting at index c.
 // midside nodes between
 // (0,1), (1,2), (2,0), (0,3), (1,3), and (2,3)
-template <typename T> inline void ResetMidTet(const int64_t *cells, T *points) {
-    int64_t ind0 = cells[0] * 3;
-    int64_t ind1 = cells[1] * 3;
-    int64_t ind2 = cells[2] * 3;
-    int64_t ind3 = cells[3] * 3;
-    int64_t ind4 = cells[4] * 3;
-    int64_t ind5 = cells[5] * 3;
-    int64_t ind6 = cells[6] * 3;
-    int64_t ind7 = cells[7] * 3;
-    int64_t ind8 = cells[8] * 3;
-    int64_t ind9 = cells[9] * 3;
+template <typename T> inline void ResetMidTet(const int *cells, T *points) {
+    int ind0 = cells[0] * 3;
+    int ind1 = cells[1] * 3;
+    int ind2 = cells[2] * 3;
+    int ind3 = cells[3] * 3;
+    int ind4 = cells[4] * 3;
+    int ind5 = cells[5] * 3;
+    int ind6 = cells[6] * 3;
+    int ind7 = cells[7] * 3;
+    int ind8 = cells[8] * 3;
+    int ind9 = cells[9] * 3;
 
     for (size_t j = 0; j < 3; j++) {
         points[ind4 + j] = (points[ind0 + j] + points[ind1 + j]) * 0.5;
@@ -460,20 +460,20 @@ template <typename T> inline void ResetMidTet(const int64_t *cells, T *points) {
 // 10(1, 4)
 // 11(2, 4)
 // 12(3, 4)
-template <typename T> inline void ResetMidPyr(const int64_t *cells, T *points) {
-    int64_t ind0 = cells[0] * 3;
-    int64_t ind1 = cells[1] * 3;
-    int64_t ind2 = cells[2] * 3;
-    int64_t ind3 = cells[3] * 3;
-    int64_t ind4 = cells[4] * 3;
-    int64_t ind5 = cells[5] * 3;
-    int64_t ind6 = cells[6] * 3;
-    int64_t ind7 = cells[7] * 3;
-    int64_t ind8 = cells[8] * 3;
-    int64_t ind9 = cells[9] * 3;
-    int64_t ind10 = cells[10] * 3;
-    int64_t ind11 = cells[11] * 3;
-    int64_t ind12 = cells[12] * 3;
+template <typename T> inline void ResetMidPyr(const int *cells, T *points) {
+    int ind0 = cells[0] * 3;
+    int ind1 = cells[1] * 3;
+    int ind2 = cells[2] * 3;
+    int ind3 = cells[3] * 3;
+    int ind4 = cells[4] * 3;
+    int ind5 = cells[5] * 3;
+    int ind6 = cells[6] * 3;
+    int ind7 = cells[7] * 3;
+    int ind8 = cells[8] * 3;
+    int ind9 = cells[9] * 3;
+    int ind10 = cells[10] * 3;
+    int ind11 = cells[11] * 3;
+    int ind12 = cells[12] * 3;
 
     for (size_t j = 0; j < 3; j++) {
         points[ind5 + j] = (points[ind0 + j] + points[ind1 + j]) * 0.5;
@@ -487,7 +487,7 @@ template <typename T> inline void ResetMidPyr(const int64_t *cells, T *points) {
     }
 }
 
-template <typename T> inline void ResetMidWeg(const int64_t *cells, T *points) {
+template <typename T> inline void ResetMidWeg(const int *cells, T *points) {
     // Reset midside nodes of a wedge cell:
     // 6  (0,1)
     // 7  (1,2)
@@ -498,21 +498,21 @@ template <typename T> inline void ResetMidWeg(const int64_t *cells, T *points) {
     // 12 (0,3)
     // 13 (1,4)
     // 14 (2,5)
-    int64_t ind0 = cells[0] * 3;
-    int64_t ind1 = cells[1] * 3;
-    int64_t ind2 = cells[2] * 3;
-    int64_t ind3 = cells[3] * 3;
-    int64_t ind4 = cells[4] * 3;
-    int64_t ind5 = cells[5] * 3;
-    int64_t ind6 = cells[6] * 3;
-    int64_t ind7 = cells[7] * 3;
-    int64_t ind8 = cells[8] * 3;
-    int64_t ind9 = cells[9] * 3;
-    int64_t ind10 = cells[10] * 3;
-    int64_t ind11 = cells[11] * 3;
-    int64_t ind12 = cells[12] * 3;
-    int64_t ind13 = cells[13] * 3;
-    int64_t ind14 = cells[14] * 3;
+    int ind0 = cells[0] * 3;
+    int ind1 = cells[1] * 3;
+    int ind2 = cells[2] * 3;
+    int ind3 = cells[3] * 3;
+    int ind4 = cells[4] * 3;
+    int ind5 = cells[5] * 3;
+    int ind6 = cells[6] * 3;
+    int ind7 = cells[7] * 3;
+    int ind8 = cells[8] * 3;
+    int ind9 = cells[9] * 3;
+    int ind10 = cells[10] * 3;
+    int ind11 = cells[11] * 3;
+    int ind12 = cells[12] * 3;
+    int ind13 = cells[13] * 3;
+    int ind14 = cells[14] * 3;
 
     for (size_t j = 0; j < 3; j++) {
         points[ind6 + j] = (points[ind0 + j] + points[ind1 + j]) * 0.5;
@@ -540,27 +540,27 @@ template <typename T> inline void ResetMidWeg(const int64_t *cells, T *points) {
 // 17 (1,5)
 // 18 (2,6)
 // 19 (3,7)
-template <typename T> inline void ResetMidHex(const int64_t *cells, T *points) {
-    int64_t ind0 = cells[0] * 3;
-    int64_t ind1 = cells[1] * 3;
-    int64_t ind2 = cells[2] * 3;
-    int64_t ind3 = cells[3] * 3;
-    int64_t ind4 = cells[4] * 3;
-    int64_t ind5 = cells[5] * 3;
-    int64_t ind6 = cells[6] * 3;
-    int64_t ind7 = cells[7] * 3;
-    int64_t ind8 = cells[8] * 3;
-    int64_t ind9 = cells[9] * 3;
-    int64_t ind10 = cells[10] * 3;
-    int64_t ind11 = cells[11] * 3;
-    int64_t ind12 = cells[12] * 3;
-    int64_t ind13 = cells[13] * 3;
-    int64_t ind14 = cells[14] * 3;
-    int64_t ind15 = cells[15] * 3;
-    int64_t ind16 = cells[16] * 3;
-    int64_t ind17 = cells[17] * 3;
-    int64_t ind18 = cells[18] * 3;
-    int64_t ind19 = cells[19] * 3;
+template <typename T> inline void ResetMidHex(const int *cells, T *points) {
+    int ind0 = cells[0] * 3;
+    int ind1 = cells[1] * 3;
+    int ind2 = cells[2] * 3;
+    int ind3 = cells[3] * 3;
+    int ind4 = cells[4] * 3;
+    int ind5 = cells[5] * 3;
+    int ind6 = cells[6] * 3;
+    int ind7 = cells[7] * 3;
+    int ind8 = cells[8] * 3;
+    int ind9 = cells[9] * 3;
+    int ind10 = cells[10] * 3;
+    int ind11 = cells[11] * 3;
+    int ind12 = cells[12] * 3;
+    int ind13 = cells[13] * 3;
+    int ind14 = cells[14] * 3;
+    int ind15 = cells[15] * 3;
+    int ind16 = cells[16] * 3;
+    int ind17 = cells[17] * 3;
+    int ind18 = cells[18] * 3;
+    int ind19 = cells[19] * 3;
 
     for (size_t j = 0; j < 3; j++) {
         points[ind8 + j] = (points[ind0 + j] + points[ind1 + j]) * 0.5;
@@ -581,18 +581,18 @@ template <typename T> inline void ResetMidHex(const int64_t *cells, T *points) {
 template <typename T>
 void ResetMidside(
     NDArray<const uint8_t, 1> celltypes_arr,
-    NDArray<const int64_t, 1> cells_arr,
-    NDArray<const int64_t, 1> offset_arr,
+    NDArray<const int, 1> cells_arr,
+    NDArray<const int, 1> offset_arr,
     NDArray<T, 2> points_arr) {
 
     int n_cells = celltypes_arr.size();
-    const int64_t *cells = cells_arr.data();
-    const int64_t *offset = offset_arr.data();
+    const int *cells = cells_arr.data();
+    const int *offset = offset_arr.data();
     const uint8_t *celltypes = celltypes_arr.data();
     T *points = points_arr.data();
 
     for (int i = 0; i < n_cells; i++) {
-        int64_t c = offset[i];
+        int c = offset[i];
 
         switch (celltypes[i]) {
         case VTK_QUADRATIC_TETRA:

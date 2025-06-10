@@ -23,8 +23,8 @@ def write_eblock(
     rcon: NDArray[np.int32],
     elem_nnodes: NDArray[np.int32],
     celltypes: NDArray[np.uint8],
-    offset: NDArray[np.int64],
-    cells: NDArray[np.int64],
+    offset: NDArray[np.int32],
+    cells: NDArray[np.int32],
     typenum: NDArray[np.int32],
     nodenum: NDArray[np.int32],
     mode: str,
@@ -32,8 +32,8 @@ def write_eblock(
 def cmblock_items_from_array(array: NDArray[np.int32]) -> NDArray[np.int32]: ...
 def reset_midside(
     celltypes: NDArray[np.uint8],
-    cells: NDArray[np.int64],
-    offset: NDArray[np.int64],
+    cells: NDArray[np.int32],
+    offset: NDArray[np.int32],
     points: NDArray[T],
 ) -> None: ...
 def overwrite_nblock(

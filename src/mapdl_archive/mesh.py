@@ -6,13 +6,15 @@ from typing import Dict, List, Optional, Tuple, TypeVar, Union, cast
 
 import numpy as np
 from numpy.typing import NDArray
-from pyvista import ID_TYPE, CellArray
 from pyvista.core.pointset import PolyData, UnstructuredGrid
-from vtkmodules.util.numpy_support import numpy_to_vtk
+from vtkmodules.util.numpy_support import numpy_to_vtk as numpy_to_vtk
+from vtkmodules.vtkCommonCore import vtkTypeInt32Array, vtkTypeInt64Array
+from vtkmodules.vtkCommonDataModel import vtkCellArray
 
 from mapdl_archive import _archive, _reader
 from mapdl_archive.elements import ETYPE_MAP
 
+VTK_UNSIGNED_CHAR = 3
 COMP_DICT = Dict[str, NDArray[np.int32]]
 
 INVALID_ALLOWABLE_TYPES = TypeError(
@@ -104,7 +106,7 @@ class Mesh:
         elem: NDArray[np.int32],
         elem_off: NDArray[np.int32],
         ekey: NDArray[np.int32],
-        rnum: NDArray[np.int64],
+        rnum: NDArray[np.int32],
         node_comps: COMP_DICT = {},
         elem_comps: COMP_DICT = {},
         rdat: List[List[float]] = [],
@@ -135,7 +137,7 @@ class Mesh:
         self._node_comps: COMP_DICT = node_comps
         self._elem_comps: COMP_DICT = elem_comps
         self._rdat: List[List[float]] = rdat
-        self._rnum: NDArray[np.int64] = rnum
+        self._rnum: NDArray[np.int32] = rnum
         self._keyopt: Dict[int, List[List[int]]] = keyopt
         self._tshape: Optional[NDArray[np.int32]] = None
         self._tshape_key: Optional[NDArray[np.int32]] = None
@@ -253,18 +255,24 @@ class Mesh:
 
         if additional_checking:
             cells[cells < 0] = 0
-            # cells[cells >= nodes.shape[0]] = 0  # fails when n_nodes < 20
 
         grid = UnstructuredGrid()
         grid.points = nodes
 
-        # Warn when type mismatch as it results in copying setting cells
-        if cells.dtype != ID_TYPE:
-            warnings.warn(f"Mismatch between cell dtype {cells.dtype} and VTK ID_TYPE {ID_TYPE}")
+        # convert to vtk arrays without copying
+        dtype = offset.dtype
+        if dtype == np.int32:
+            vtk_dtype = vtkTypeInt32Array().GetDataType()
+        elif dtype == np.int64:
+            vtk_dtype = vtkTypeInt64Array().GetDataType()
+        offset_vtk = numpy_to_vtk(offset, deep=False, array_type=vtk_dtype)
+        cells_vtk = numpy_to_vtk(cells, deep=False, array_type=vtk_dtype)
 
-        vtk_cells = CellArray.from_arrays(offset, cells, deep=False)
-        vtk_cell_type = numpy_to_vtk(celltypes, deep=False)
-        grid.SetCells(vtk_cell_type, vtk_cells)
+        celltypes_vtk = numpy_to_vtk(celltypes, deep=False, array_type=VTK_UNSIGNED_CHAR)
+
+        cell_array = vtkCellArray()
+        cell_array.SetData(offset_vtk, cells_vtk)
+        grid.SetCells(celltypes_vtk, cell_array)
 
         # Store original ANSYS element and node information
         grid.point_data["ansys_node_num"] = nnum
@@ -594,7 +602,7 @@ class Mesh:
         return self._rdat
 
     @property
-    def rlblock_num(self) -> NDArray[np.int64]:
+    def rlblock_num(self) -> NDArray[np.int32]:
         """Return the indices from the real constant data.
 
         Examples
@@ -754,10 +762,10 @@ class Mesh:
 
 
 def fix_missing_midside(
-    cells: NDArray[np.int64],
+    cells: NDArray[np.int32],
     nodes: NDArray[np.double],
     celltypes: NDArray[np.uint8],
-    offset: NDArray[np.int64],
+    offset: NDArray[np.int32],
     angles: Optional[NDArray[np.float64]],
     nnum: NDArray[np.int32],
 ) -> Tuple[NDArray[np.float64], Optional[NDArray[np.float64]], NDArray[np.int32]]:
@@ -775,7 +783,7 @@ def fix_missing_midside(
     nnodes = nodes.shape[0]
 
     nextra = mask.sum()
-    cells[mask] = np.arange(nnodes, nnodes + nextra)
+    cells[mask] = np.arange(nnodes, nnodes + nextra, dtype=np.int32)
 
     nodes_new = np.empty((nnodes + nextra, 3))
     nodes_new[:nnodes] = nodes
