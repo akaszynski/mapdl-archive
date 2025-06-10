@@ -1246,11 +1246,11 @@ class Archive {
     // Convert ansys style connectivity to VTK connectivity
     // type_ref is a mapping between ansys element types and VTK element types
     nb::tuple ToVTK(NDArray<int, 1> type_ref) {
-        NDArray<int64_t, 1> offset_arr = MakeNDArray<int64_t, 1>({n_elem + 1});
+        NDArray<int, 1> offset_arr = MakeNDArray<int, 1>({n_elem + 1});
         NDArray<uint8_t, 1> celltypes_arr = MakeNDArray<uint8_t, 1>({n_elem});
 
         // Allocate connectivity: max cell size 20 for VTK_HEXAHEDRAL
-        int64_t *cell_data = new int64_t[n_elem * 20];
+        int *cell_data = new int[n_elem * 20];
 
         int loc = ans_to_vtk(
             n_elem,
@@ -1263,7 +1263,7 @@ class Archive {
             cell_data,
             celltypes_arr.data());
 
-        NDArray<int64_t, 1> cells_arr = WrapNDarray<int64_t, 1>(cell_data, {loc});
+        NDArray<int, 1> cells_arr = WrapNDarray<int, 1>(cell_data, {loc});
         return nb::make_tuple(offset_arr, celltypes_arr, cells_arr);
     }
 
@@ -1289,11 +1289,11 @@ nb::tuple ConvertToVTK(
     int n_elem = elem_off_arr.size() - 1;
     int n_nodes = nnum_arr.size();
 
-    NDArray<int64_t, 1> offset_arr = MakeNDArray<int64_t, 1>({n_elem + 1});
+    NDArray<int, 1> offset_arr = MakeNDArray<int, 1>({n_elem + 1});
     NDArray<uint8_t, 1> celltypes_arr = MakeNDArray<uint8_t, 1>({n_elem});
 
     // Allocate connectivity: max cell size 20 for VTK_HEXAHEDRAL
-    int64_t *cell_data = new int64_t[n_elem * 20];
+    int *cell_data = new int[n_elem * 20];
 
     int loc = ans_to_vtk(
         n_elem,
@@ -1306,7 +1306,7 @@ nb::tuple ConvertToVTK(
         cell_data,
         celltypes_arr.data());
 
-    NDArray<int64_t, 1> cells_arr = WrapNDarray<int64_t, 1>(cell_data, {loc});
+    NDArray<int, 1> cells_arr = WrapNDarray<int, 1>(cell_data, {loc});
     return nb::make_tuple(offset_arr, celltypes_arr, cells_arr);
 }
 

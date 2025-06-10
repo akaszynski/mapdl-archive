@@ -10,8 +10,8 @@ int ans_to_vtk(
     const int *,
     const int,
     const int *,
-    int64_t *,
-    int64_t *,
+    int *,
+    int *,
     uint8_t *);
 
 #endif

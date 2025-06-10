@@ -6,12 +6,39 @@ extensions.
 
 #### Emacs configuration
 
-If using emacs and helm, generate the project configuration files using `-DCMAKE_EXPORT_COMPILE_COMMANDS=ON`. Here's a sample configuration for C++11 on Linux:
+If using emacs and helm, generate the project configuration files using
+`-DCMAKE_EXPORT_COMPILE_COMMANDS=ON`. Here's a sample configuration for C++13
+on Linux:
 
-```
+Here's a complete Bash version:
+
+```bash
+#!/usr/bin/env bash
+set -e
+
 pip install nanobind
-export NANOBIND_INCLUDE=$(python -c "import nanobind, os; print(os.path.join(os.path.dirname(nanobind.__file__), 'cmake'))")
-cmake -Dnanobind_DIR=$NANOBIND_INCLUDE -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_CXX_STANDARD_INCLUDE_DIRECTORIES="/usr/include/c++/11;/usr/include/x86_64-linux-gnu/c++/11/;/usr/lib/gcc/x86_64-linux-gnu/11/include/"
+
+NANOBIND_INCLUDE=$(python -c "import nanobind, os; print(os.path.join(os.path.dirname(nanobind.__file__), 'cmake'))")
+
+INCLUDE_DIRS=(
+    "/usr/include/c++/13"
+    "/usr/include/x86_64-linux-gnu/c++/13/"
+    "/usr/lib/gcc/x86_64-linux-gnu/13/include/"
+)
+
+for dir in "${INCLUDE_DIRS[@]}"; do
+    if [[ ! -d "$dir" ]]; then
+        echo "Missing directory: $dir"
+        exit 1
+    fi
+done
+
+joined=$(IFS=';'; echo "${INCLUDE_DIRS[*]}")
+
+cmake \
+  -Dnanobind_DIR="$NANOBIND_INCLUDE" \
+  -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+  -DCMAKE_CXX_STANDARD_INCLUDE_DIRECTORIES="$joined"
 ```
 
 These will be necessary for helm and treesit to determine the locations of the header files.

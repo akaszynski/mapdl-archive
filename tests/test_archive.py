@@ -114,7 +114,9 @@ def test_archive_init(hex_archive: Archive) -> None:
 def test_parse_vtk(hex_archive: Archive) -> None:
     grid = hex_archive.grid
     assert grid.points.size
-    assert grid.cells.size
+    assert grid.cell_connectivity.size
+    assert grid.cell_connectivity.dtype == np.int32
+    assert grid.offset.dtype == np.int32
     assert "ansys_node_num" in grid.point_data
 
     with pytest.raises(TypeError):
