@@ -783,7 +783,7 @@ def fix_missing_midside(
     nnodes = nodes.shape[0]
 
     nextra = mask.sum()
-    cells[mask] = np.arange(nnodes, nnodes + nextra)
+    cells[mask] = np.arange(nnodes, nnodes + nextra, dtype=np.int32)
 
     nodes_new = np.empty((nnodes + nextra, 3))
     nodes_new[:nnodes] = nodes
