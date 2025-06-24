@@ -336,6 +336,13 @@ class MemoryMappedFile {
     }
 
     off_t tellg() const { return current - start; }
+
+    void sanitize_line_ascii() {
+        line.erase(
+            std::remove_if(
+                line.begin(), line.end(), [](unsigned char c) { return c < 32 || c > 126; }),
+            line.end());
+    }
 };
 
 int ReadEBlockMemMap(MemoryMappedFile &memmap, int *elem_off, int *elem, const int nelem) {
@@ -1054,8 +1061,13 @@ class Archive {
 
     // Read CMBLOCK
     void ReadCMBlock() {
+
+        // edge case with non ASCII characters
+        memmap.sanitize_line_ascii();
+
         if (debug) {
             std::cout << "reading CMBLOCK" << std::endl;
+            std::cout << "    " << memmap.line << std::endl;
         }
 
         // Assumes line at CMBLOCK

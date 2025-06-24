@@ -536,7 +536,7 @@ class Mesh:
 
     @property
     def enum(self) -> NDArray[np.int32]:
-        """Return the MAPDl element numbers.
+        """Return the MAPDL element numbers.
 
         Examples
         --------
@@ -546,6 +546,9 @@ class Mesh:
         >>> archive.enum
         array([    1,     2,     3, ...,  9998,  9999, 10000])
         """
+        if not self._has_elements:
+            return np.empty(0, dtype=np.int32)
+
         if self._enum is None:
             self._enum = self._elem[self._elem_off[:-1] + 8]
         return self._enum
@@ -660,7 +663,10 @@ class Mesh:
         """Return the representation of the mesh."""
         txt: str = "ANSYS Mesh\n"
         txt += f"  Number of Nodes:              {len(self.nnum)}\n"
-        txt += f"  Number of Elements:           {len(self.enum)}\n"
+        if self._has_elements:
+            txt += f"  Number of Elements:           {len(self.enum)}\n"
+        else:
+            txt += "  Number of Elements:           0\n"
         txt += f"  Number of Element Types:      {len(self.ekey)}\n"
         txt += f"  Number of Node Components:    {len(self.node_components)}\n"
         txt += f"  Number of Element Components: {len(self.element_components)}\n"
