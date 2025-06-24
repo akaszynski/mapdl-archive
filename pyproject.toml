@@ -27,7 +27,7 @@ description = "Pythonic interface to MAPDL archive files."
 name = "mapdl-archive"
 readme = "README.rst"
 requires-python = ">=3.9"
-version = "0.2.6"
+version = "0.2.7"
 
 [project.urls]
 Repository = "https://github.com/akaszynski/mapdl-archive"
@@ -70,6 +70,6 @@ extend-select = ["I"]
 [tool.scikit-build]
 # Setuptools-style build caching in a local directory
 build-dir = "build/{wheel_tag}"
-minimum-version = "0.2.6"
+minimum-version = "0.2.7"
 sdist.exclude = [".github", "*.png", "tests", ".mypy_cache", ".pre-commit-config.yaml", "*_cache", "CONTRIBUTING.md", ".gitignore"]
 sdist.include = ["*.cpp"]
