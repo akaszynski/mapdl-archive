@@ -14,11 +14,11 @@ classifiers = [
   "Operating System :: Microsoft :: Windows",
   "Operating System :: POSIX",
   "Operating System :: MacOS",
-  "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
-  "Programming Language :: Python :: 3.13"
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14"
 ]
 dependencies = [
   "pyvista>=0.41.1"
@@ -26,17 +26,21 @@ dependencies = [
 description = "Pythonic interface to MAPDL archive files."
 name = "mapdl-archive"
 readme = "README.rst"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 version = "0.3.dev0"
+
+[project.optional-dependencies]
+tests = ["pytest"]
 
 [project.urls]
 Repository = "https://github.com/akaszynski/mapdl-archive"
 
 [tool.cibuildwheel]
 archs = ["auto64"]  # 64-bit only
-skip = "cp38-* cp314-* pp* *musllinux*"  # build 3.9 - 3.13 w/o PyPy and musl-based
-test-command = "pytest {project}/tests"
-test-requires = "pytest"
+build = "cp310-* cp311-* cp312-*"  # Only build Python 3.10 - 3.12 since 3.12 is ABI3
+skip = "*musllinux*"
+test-command = "pytest {project}/tests -vv"
+test-extras = ["tests"]
 
 [tool.cibuildwheel.macos]
 archs = ["native"]
@@ -73,3 +77,4 @@ build-dir = "build/{wheel_tag}"
 minimum-version = "0.4"
 sdist.exclude = [".github", "*.png", "tests", ".mypy_cache", ".pre-commit-config.yaml", "*_cache", "CONTRIBUTING.md", ".gitignore"]
 sdist.include = ["*.cpp"]
+wheel.py-api = "cp312"
