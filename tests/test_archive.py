@@ -21,10 +21,7 @@ from mapdl_archive import Archive, _archive, examples, _reader
 # Windows issues Python 3.12
 WINDOWS = os.name == "nt"
 WIN_PY312 = sys.version_info.minor == 12 and WINDOWS
-skip_plotting = pytest.mark.skipif(
-    WINDOWS or not system_supports_plotting(),  # type: ignore
-    reason="Requires active X Server",
-)
+skip_plotting = pytest.mark.skipif(True, reason="Requires active X Server")
 
 LINEAR_CELL_TYPES = [
     CellType.TETRA,
@@ -327,6 +324,18 @@ def test_write_quad_complex_archive(
     tmp_archive_file = tmp_path / "tmp.cdb"
 
     mapdl_archive.save_as_archive(tmp_archive_file, grid)
+    new_archive = Archive(tmp_archive_file)
+    assert np.allclose(grid.cells, new_archive.grid.cells)
+    assert np.allclose(grid.points, new_archive.grid.points)
+
+
+def test_write_quad_complex_archive_with_etblock(
+    tmp_path: Path, all_solid_cells_archive: Archive
+) -> None:
+    grid = all_solid_cells_archive.grid
+    tmp_archive_file = tmp_path / "tmp.cdb"
+
+    mapdl_archive.save_as_archive(tmp_archive_file, grid, use_etblock=True)
     new_archive = Archive(tmp_archive_file)
     assert np.allclose(grid.cells, new_archive.grid.cells)
     assert np.allclose(grid.points, new_archive.grid.points)

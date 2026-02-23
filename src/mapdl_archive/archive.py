@@ -22,8 +22,8 @@ NPArray_FLOAT64 = NDArray[np.float64]
 
 VTK_VOXEL = 11
 
-log = logging.getLogger(__name__)
-log.setLevel("CRITICAL")
+LOG = logging.getLogger(__name__)
+LOG.setLevel("CRITICAL")
 
 U = TypeVar("U", np.int32, np.int64)
 T = TypeVar("T", np.float32, np.float64)
@@ -403,6 +403,58 @@ class Archive(Mesh):
         )
 
 
+def _generate_etblock(
+    element_ids: list[int], type_nums: list[int], keyopts: dict[int, list[int]] | None = None
+) -> str:
+    """
+    Generate an ETBLOCK formatted string for MAPDL.
+
+    Parameters
+    ----------
+    element_ids : list[int]
+        User-selected element type identifiers (Field 1).
+    type_nums : list[int]
+        Corresponding element numbers (Field 2).
+    keyopts : dict[int, list[int]], optional
+        Optional dictionary mapping element_ids to a list of 18 KEYOPT
+        integers.  Missing or None values are treated as zeros.
+
+    Returns
+    -------
+    str
+        Multi-line ETBLOCK string suitable for writing to an ANSYS archive file.
+
+    Notes
+    -----
+    Typical ETBLOCK::
+
+        ETBLOCK,5,0
+        (2i9,19a9)
+           1  285 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+           2  173 0 0 0 0 0 0 0 0 0 2 0 0 0 0 0 0 0 0 0
+           3  170 0 0 0 1 0 0 0 0 0 2 0 0 0 0 0 0 0 1 0
+           4  173 0 0 0 0 0 0 0 0 0 2 0 0 0 0 0 0 0 0 0
+           5  170 1 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0
+           -1
+
+    """
+    n_elements = len(element_ids)
+    lines = [f"ETBLOCK,{n_elements},0", "(2i9,19a9)"]
+
+    for eid, etnum in zip(element_ids, type_nums):
+        opts = [0] * 18
+        if keyopts and eid in keyopts and keyopts[eid]:
+            for i, val in enumerate(keyopts[eid][:18]):
+                opts[i] = val
+        # format: Field1, Field2, 18 KEYOPT values, then 2 trailing zeros to match example
+        formatted_opts = " ".join(f"{v:1d}" for v in opts)
+        line = f"{eid:9d} {etnum:3d} {formatted_opts} 0 0"
+        lines.append(line)
+
+    lines.append("-1")
+    return "\n".join(lines)
+
+
 def save_as_archive(
     filename: Union[pathlib.Path, str],
     grid: UnstructuredGrid,
@@ -413,6 +465,7 @@ def save_as_archive(
     enum_start: int = 1,
     nnum_start: int = 1,
     include_etype_header: bool = True,
+    use_etblock: bool = True,
     reset_etype: bool = False,
     allow_missing: bool = True,
     include_surface_elements: bool = True,
@@ -421,7 +474,8 @@ def save_as_archive(
     exclude_missing: bool = False,
     node_sig_digits: int = 13,
 ) -> None:
-    """Write FEM as an ANSYS APDL archive file.
+    """
+    Write FEM as an ANSYS APDL archive file.
 
     This function supports the following element types:
 
@@ -446,65 +500,56 @@ def save_as_archive(
     ----------
     filename : str, pathlib.Path
        Filename to write archive file.
-
     grid : pyvista.DataSet
         Any :class:`pyvista.DataSet` that can be cast to a
         :class:`pyvista.UnstructuredGrid`.
-
     mtype_start : int, optional
         Material number to assign to elements.  Can be set manually by
         adding the cell array "mtype" to the unstructured grid.
-
     etype_start : int, optional
         Starting element type number.  Can be manually set by adding
         the cell array "ansys_etype" to the unstructured grid.
-
     real_constant_start : int, optional
         Starting real constant to assign to unset cells.  Can be
         manually set by adding the cell array "ansys_real_constant" to
         the unstructured grid.
-
     mode : str, optional
         File mode.  See ``help(open)``
-
     enum_start : int, optional
         Starting element number to assign to unset cells.  Can be
         manually set by adding the cell array "ansys_elem_num" to the
         unstructured grid.
-
     nnum_start : int, optional
         Starting element number to assign to unset points.  Can be
         manually set by adding the point array "ansys_node_num" to the
         unstructured grid.
-
     include_etype_header : bool, optional
-        For each element type, includes element type command
-        (e.g. "ET, 1, 186") in the archive file.
-
+        For each element type, includes element type command (e.g. "ET, 1,
+        186") in the archive file. Uses ``"EBLOCK"`` instead of ``"ET"`` when
+        ``use_etblock=True``.
+    use_etblock : bool, default: False
+        Use ``"ETBLOCK"`` instead of ``"ET"`` when writing out the archive
+        file. This should be enabled when writing out to MAPDL v2023R1 or
+        newer.
     reset_etype : bool, optional
         Resets element type.  Element types will automatically be
         determined by the shape of the element (i.e. quadradic
         tetrahedrals will be saved as SOLID187, linear hexahedrals as
         SOLID185).  Default True.
-
     include_surface_elements : bool, optional
         Includes surface elements when writing the archive file and
         saves them as SHELL181.
-
     include_solid_elements : bool, optional
         Includes solid elements when writing the archive file and
         saves them as SOLID185, SOLID186, or SOLID187.
-
     include_components : bool, optional
         Writes note components to file.  Node components must be
         stored within the unstructured grid as uint8 or bool arrays.
-
     exclude_missing : bool, default: False
         When ``allow_missing=True``, write ``0`` instead of renumbering
         nodes. This allows you to exclude midside nodes for certain element
         types (e.g. ``SOLID186``). Missing midside nodes are identified as
         ``-1`` in the ``"ansys_node_num"`` array.
-
     node_sig_digits : int, default: 13
         Number of significant digits to use when writing the nodes. Must be
         greater than 0.
@@ -565,7 +610,7 @@ def save_as_archive(
     if "ansys_node_num" in grid.point_data:
         nodenum = grid.point_data["ansys_node_num"]
     else:
-        log.info("No ANSYS node numbers set in input. Adding default range")
+        LOG.info("No ANSYS node numbers set in input. Adding default range")
         nodenum = np.arange(1, grid.n_points + 1, dtype=np.int32)
 
     missing_mask = nodenum == -1
@@ -573,7 +618,7 @@ def save_as_archive(
         if not allow_missing:
             raise RuntimeError('Missing node numbers.  Exiting due "allow_missing=False"')
         elif exclude_missing:
-            log.info("Excluding missing nodes from archive file.")
+            LOG.info("Excluding missing nodes from archive file.")
             nodenum = nodenum.copy()
             nodenum[missing_mask] = 0
         else:
@@ -582,7 +627,7 @@ def save_as_archive(
                 start_num = nnum_start
             nadd = np.sum(nodenum == -1)
             end_num = start_num + nadd
-            log.info(
+            LOG.info(
                 "FEM missing some node numbers.  Adding node numbering from %d to %d",
                 start_num,
                 end_num,
@@ -596,7 +641,7 @@ def save_as_archive(
     else:
         if not allow_missing:
             raise RuntimeError('Missing node numbers. Exiting due "allow_missing=False"')
-        log.info(
+        LOG.info(
             "No ANSYS element numbers set in input. Adding default range starting from %d",
             enum_start,
         )
@@ -613,7 +658,7 @@ def save_as_archive(
             start_num = enum_start
         nadd = np.sum(enum == -1)
         end_num = start_num + nadd
-        log.info(
+        LOG.info(
             "FEM missing some cell numbers.  Adding numbering from %d to %d",
             start_num,
             end_num,
@@ -624,28 +669,28 @@ def save_as_archive(
     if "ansys_material_type" in grid.cell_data:
         mtype = grid.cell_data["ansys_material_type"]
     else:
-        log.info(
+        LOG.info(
             "No ANSYS element numbers set in input.  Adding default range starting from %d",
             mtype_start,
         )
         mtype = np.arange(1, ncells + 1, dtype=np.int32)
 
     if np.any(mtype == -1):
-        log.info("FEM missing some material type numbers.  Adding...")
+        LOG.info("FEM missing some material type numbers.  Adding...")
         mtype[mtype == -1] = mtype_start
 
     # real constant
     if "ansys_real_constant" in grid.cell_data:
         rcon = grid.cell_data["ansys_real_constant"]
     else:
-        log.info(
-            "No ANSYS element numbers set in input.  " + "Adding default range starting from %d",
+        LOG.info(
+            "No ANSYS element numbers set in input. Adding default range starting from %d",
             real_constant_start,
         )
         rcon = np.arange(1, ncells + 1, dtype=np.int32)
 
     if np.any(rcon == -1):
-        log.info("FEM missing some material type numbers.  Adding...")
+        LOG.info("FEM missing some material type numbers.  Adding...")
         rcon[rcon == -1] = real_constant_start
 
     # element type
@@ -655,13 +700,22 @@ def save_as_archive(
         typenum = grid.cell_data["ansys_elem_type_num"]
         etype = grid.cell_data["ansys_etype"]
         if np.any(etype == -1):
-            log.warning("Some elements are missing element type numbers.")
+            LOG.warning("Some elements are missing element type numbers.")
             invalid = True
 
         if include_etype_header and not invalid:
             _, ind = np.unique(etype, return_index=True)
-            for idx in ind:
-                header += "ET, %d, %d\n" % (etype[idx], typenum[idx])
+            if use_etblock:
+                # create element IDs and type numbers for ETBLOCK
+                element_ids = etype[ind].tolist()
+                type_nums = typenum[ind].tolist()
+                # optional: generate KEYOPT dictionary, here all zeros
+                # keyopts = {eid: [0] * 18 for eid in element_ids}
+                header += _generate_etblock(element_ids, type_nums) + "\n"
+            else:
+                for idx in ind:
+                    header += f"ET, {etype[idx]}, {typenum[idx]}\n"
+
     else:
         missing = True
 
@@ -670,18 +724,18 @@ def save_as_archive(
         mask = grid.celltypes < 20
         if np.any(grid.cell_data["ansys_elem_type_num"][mask] == 186):
             invalid = True
-            log.warning("Invalid ANSYS element types.")
+            LOG.warning("Invalid ANSYS element types.")
 
     if invalid or missing:
         if not allow_missing:
             raise RuntimeError(
                 'Invalid or missing data in "ansys_elem_type_num"'
-                ' or "ansys_etype".  Exiting due "allow_missing=False"'
+                ' or "ansys_etype". Exiting due "allow_missing=False"'
             )
 
-        log.info(
-            "No ANSYS element type or invalid data input.  "
-            + "Adding default range starting from %d" % etype_start
+        LOG.info(
+            "No ANSYS element type or invalid data input.  Adding default range starting from %d",
+            etype_start,
         )
 
         etype = np.empty(grid.n_cells, np.int32)
@@ -724,10 +778,16 @@ def save_as_archive(
         typenum[etype == etype_187] = 187
         typenum[etype == etype_181] = 181
 
-        header += f"ET,{etype_185},185\n"
-        header += f"ET,{etype_186},186\n"
-        header += f"ET,{etype_187},187\n"
-        header += f"ET,{etype_181},181\n"
+        if use_etblock:
+            element_ids = [etype_185, etype_186, etype_187, etype_181]
+            type_nums = [185, 186, 187, 181]
+            # no keyopts provided, all default zeros
+            header += _generate_etblock(element_ids, type_nums) + "\n"
+        else:
+            header += f"ET,{etype_185},185\n"
+            header += f"ET,{etype_186},186\n"
+            header += f"ET,{etype_187},187\n"
+            header += f"ET,{etype_181},181\n"
 
     # number of nodes written per element
     elem_nnodes = np.empty(etype.size, np.int32)
@@ -752,7 +812,7 @@ def save_as_archive(
         f.write(header)
 
     if exclude_missing:
-        log.info("Excluding missing nodes from archive file.")
+        LOG.info("Excluding missing nodes from archive file.")
         write_nblock(
             filename,
             nodenum[~missing_mask],
