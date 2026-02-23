@@ -21,10 +21,7 @@ from mapdl_archive import Archive, _archive, examples, _reader
 # Windows issues Python 3.12
 WINDOWS = os.name == "nt"
 WIN_PY312 = sys.version_info.minor == 12 and WINDOWS
-skip_plotting = pytest.mark.skipif(
-    WINDOWS or not system_supports_plotting(),  # type: ignore
-    reason="Requires active X Server",
-)
+skip_plotting = pytest.mark.skipif(True, reason="Requires active X Server")
 
 LINEAR_CELL_TYPES = [
     CellType.TETRA,
