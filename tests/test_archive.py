@@ -329,6 +329,18 @@ def test_write_quad_complex_archive(
     assert np.allclose(grid.points, new_archive.grid.points)
 
 
+def test_write_quad_complex_archive_with_etblock(
+    tmp_path: Path, all_solid_cells_archive: Archive
+) -> None:
+    grid = all_solid_cells_archive.grid
+    tmp_archive_file = tmp_path / "tmp.cdb"
+
+    mapdl_archive.save_as_archive(tmp_archive_file, grid, use_etblock=True)
+    new_archive = Archive(tmp_archive_file)
+    assert np.allclose(grid.cells, new_archive.grid.cells)
+    assert np.allclose(grid.points, new_archive.grid.points)
+
+
 @pytest.mark.parametrize("celltype", LINEAR_CELL_TYPES)
 def test_write_lin_archive(
     tmp_path: Path, celltype: CellType, all_solid_cells_archive_linear: Archive
