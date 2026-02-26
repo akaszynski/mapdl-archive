@@ -621,3 +621,17 @@ def test_save_as_archive_with_comments(tmp_path: Path, hex_archive: Archive) -> 
 
     # Following line must be /PREP7
     assert lines[len(comments) + 1] == "/PREP7"
+
+
+def test_save_as_archive_no_comments(tmp_path: Path, hex_archive: Archive) -> None:
+    filename = tmp_path / "tmp_no_comments.cdb"
+    mapdl_archive.save_as_archive(filename, hex_archive.grid, comments=None)
+
+    with open(filename, "r") as f:
+        lines = [line.strip() for line in f.readlines() if line.strip()]
+
+    # First line must always be Ansys release
+    assert lines[0] == "/COM,ANSYS RELEASE"
+
+    # Next line must immediately be /PREP7 since no comments
+    assert lines[1] == "/PREP7"
