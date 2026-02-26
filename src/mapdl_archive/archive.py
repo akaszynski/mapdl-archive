@@ -6,7 +6,7 @@ import os
 import pathlib
 import re
 import shutil
-from typing import Any, Dict, List, Optional, Sequence, Tuple, TypeVar, Union
+from typing import Any, Sequence, TypeVar
 
 import numpy as np
 from numpy.typing import NDArray
@@ -20,6 +20,8 @@ from mapdl_archive.mesh import Mesh
 NPArray_FLOAT32 = NDArray[np.float32]
 NPArray_FLOAT64 = NDArray[np.float64]
 
+PathLike = str | pathlib.Path
+
 VTK_VOXEL = 11
 
 LOG = logging.getLogger(__name__)
@@ -29,7 +31,7 @@ U = TypeVar("U", np.int32, np.int64)
 T = TypeVar("T", np.float32, np.float64)
 
 
-def parse_nblock_format(input_string: str) -> Tuple[int, int, int, int]:
+def parse_nblock_format(input_string: str) -> tuple[int, int, int, int]:
     """Parse NBLOCK format."""
     i_pattern_match = re.search(r"(\d+)i(\d+)", input_string)
     if i_pattern_match:
@@ -138,21 +140,21 @@ class Archive(Mesh):
 
     def __init__(
         self,
-        filename: Union[str, pathlib.Path],
+        filename: PathLike,
         read_parameters: bool = False,
         parse_vtk: bool = True,
         force_linear: bool = False,
-        allowable_types: Optional[Union[List[int]]] = None,
+        allowable_types: list[int] | None = None,
         null_unallowed: bool = False,
         verbose: bool = False,
         name: str = "",
         read_eblock: bool = True,
-    ):
+    ) -> None:
         """Initialize an instance of the archive class."""
         self._read_parameters: bool = read_parameters
         self._filename: pathlib.Path = pathlib.Path(filename)
         self._name: str = name
-        self._archive: Optional[_reader.Archive] = None
+        self._archive: _reader.Archive | None = None
 
         suffix = self._filename.suffix
         if suffix in [".cdb", ".dat", ".inp"]:
@@ -218,7 +220,7 @@ class Archive(Mesh):
         return self._filename
 
     @property
-    def parameters(self) -> Dict[str, NDArray[np.double]]:
+    def parameters(self) -> dict[str, NDArray[np.double]]:
         """Return the parameters stored in the archive file.
 
         Parameters have been deprecated.
@@ -294,9 +296,9 @@ class Archive(Mesh):
 
     def overwrite_nblock(
         self,
-        filename: Union[str, pathlib.Path],
+        filename: PathLike,
         pos: NDArray[T],
-        angles: Optional[NDArray[T]] = None,
+        angles: NDArray[T] | None = None,
     ) -> None:
         """Write out an archive file to disk while replacing its NBLOCK.
 
@@ -367,7 +369,7 @@ class Archive(Mesh):
 
             shutil.copyfileobj(src_file, dest_file)
 
-    def save_as_numpy(self, filename: Union[str, pathlib.Path]) -> None:
+    def save_as_numpy(self, filename: PathLike) -> None:
         """Save this archive as a numpy "npz" file.
 
         This reduces the file size by around 50% compared with the Ansys
@@ -377,10 +379,6 @@ class Archive(Mesh):
         ----------
         filename : str | pathlib.Path
             Path to save the numpy file.
-
-        Examples
-        --------
-        >>>
 
         """
         filename = str(filename)
@@ -456,7 +454,7 @@ def _generate_etblock(
 
 
 def save_as_archive(
-    filename: Union[pathlib.Path, str],
+    filename: PathLike,
     grid: UnstructuredGrid,
     mtype_start: int = 1,
     etype_start: int = 1,
@@ -465,7 +463,7 @@ def save_as_archive(
     enum_start: int = 1,
     nnum_start: int = 1,
     include_etype_header: bool = True,
-    use_etblock: bool = True,
+    use_etblock: bool = False,
     reset_etype: bool = False,
     allow_missing: bool = True,
     include_surface_elements: bool = True,
@@ -473,6 +471,7 @@ def save_as_archive(
     include_components: bool = True,
     exclude_missing: bool = False,
     node_sig_digits: int = 13,
+    comments: list[str] | None = None,
 ) -> None:
     """
     Write FEM as an ANSYS APDL archive file.
@@ -529,8 +528,9 @@ def save_as_archive(
         ``use_etblock=True``.
     use_etblock : bool, default: False
         Use ``"ETBLOCK"`` instead of ``"ET"`` when writing out the archive
-        file. This should be enabled when writing out to MAPDL v2023R1 or
-        newer.
+        file. This should not be enabled when writing out to MAPDL v2022R2 or
+        older as the ETBLOCK command may not be supported by earlier versions
+        of MAPDL.
     reset_etype : bool, optional
         Resets element type.  Element types will automatically be
         determined by the shape of the element (i.e. quadradic
@@ -553,6 +553,13 @@ def save_as_archive(
     node_sig_digits : int, default: 13
         Number of significant digits to use when writing the nodes. Must be
         greater than 0.
+    comments : list[str], optional
+        Additional comments added to the top of the blocked archive file. Each
+        comment will be prepended with the ``"/COM"`` command.
+
+        .. note::
+           Ansys Workbench appears to require ``"/COM,ANSYS RELEASE"`` as the
+           first line, and this is always included.
 
     Examples
     --------
@@ -604,7 +611,12 @@ def save_as_archive(
         )
     grid = grid.extract_cells(mask)
 
-    header = "/PREP7\n"
+    # create the header with the Ansys workbench required line
+    header = "/COM,ANSYS RELEASE\n"
+    if comments:
+        header += "\n".join([f"/COM,{comment}" for comment in comments]) + "\n"
+
+    header += "/PREP7\n"
 
     # node numbers
     if "ansys_node_num" in grid.point_data:
@@ -857,10 +869,10 @@ def save_as_archive(
 
 
 def write_nblock(
-    filename: Union[str, pathlib.Path],
-    node_id: NDArray[int],
+    filename: PathLike,
+    node_id: NDArray[np.int32],
     pos: NDArray[T],
-    angles: Optional[NDArray[T]] = None,
+    angles: NDArray[T] | None = None,
     mode: str = "w",
     sig_digits: int = 13,
 ) -> None:
@@ -941,8 +953,8 @@ def write_nblock(
 
 
 def write_cmblock(
-    filename: Union[str, io.TextIOBase, pathlib.Path],
-    items: Union[Sequence[int], NDArray[int]],
+    filename: str | io.TextIOBase | pathlib.Path,
+    items: Sequence[int] | NDArray[np.int32],
     comp_name: str,
     comp_type: str,
     digit_width: int = 10,
@@ -995,10 +1007,10 @@ def write_cmblock(
             "Invalid type {type(filename)} for `filename`. Should be file handle or string."
         )
 
-    if not isinstance(items, np.ndarray):
-        items_arr = np.array(items, dtype=np.int32)
+    if isinstance(items, np.ndarray):
+        items_arr = items.astype(np.int32, copy=False)  # ty: ignore
     else:
-        items_arr = items.astype(np.int32, copy=False)
+        items_arr = np.array(items, dtype=np.int32)
 
     # All this python writing could be a bottleneck for non-contiguous CMBLOCKs.
     # consider cythonizing this in the future
