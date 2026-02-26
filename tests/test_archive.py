@@ -601,3 +601,23 @@ def test_save_as_numpy(tmp_path: Path, hex_archive: Archive) -> None:
     assert compare_dicts_with_arrays(hex_in._elem_comps, hex_archive._elem_comps)
     assert hex_in._rdat == hex_archive._rdat
     # assert compare_dicts_with_arrays(hex_in._keyopt, hex_archive._keyopt)
+
+
+def test_save_as_archive_with_comments(tmp_path: Path, hex_archive: Archive) -> None:
+    """Verify comments can be written to the blocked archive."""
+    filename = tmp_path / "tmp_with_comments.cdb"
+    comments = ["This is a test comment", "Second comment line", "onewordcomment"]
+    mapdl_archive.save_as_archive(filename, hex_archive.grid, comments=comments)
+
+    with open(filename, "r") as f:
+        lines = [line.strip() for line in f.readlines() if line.strip()]
+
+    # First line must always be Ansys release
+    assert lines[0] == "/COM,ANSYS RELEASE"
+
+    # Next lines must be comments in order
+    for i, comment in enumerate(comments, start=1):
+        assert lines[i] == f"/COM,{comment}"
+
+    # Following line must be /PREP7
+    assert lines[len(comments) + 1] == "/PREP7"
