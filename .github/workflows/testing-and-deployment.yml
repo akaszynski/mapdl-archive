@@ -72,22 +72,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v6
-
     - uses: actions/setup-python@v6
       with:
         python-version: '3.14'
-
     - name: Build sdist
       run: pipx run build --sdist
-
     - name: Install from sdist
       run: pip install dist/mapdl*.tar.gz
-
     - name: Run tests
       run: |
         pip install pytest
         pytest -vv
-
+    - name: Fix sdist filename for PyPI
+      run: for f in dist/*.tar.gz; do mv "$f" "${f/mapdl-archive/mapdl_archive}"; done
     - uses: actions/upload-artifact@v6
       with:
         name: mapdl-archive-sdist
@@ -114,8 +111,6 @@ jobs:
         find . -name '*.tar.gz' -exec mv {} dist/ \;
     - name: List artifacts
       run: ls -R
-    - name: Fix sdist filename for PyPI
-      run: for f in dist/*.tar.gz; do mv "$f" "${f//-/_}"; done
     - name: Publish package distributions to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
     - name: Release
