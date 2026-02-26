@@ -97,7 +97,7 @@ jobs:
   release:
     name: Release
     if: github.event_name == 'push' && contains(github.ref, 'refs/tags')
-    needs: [build_wheels, build_sdist]
+    needs: [build_wheels, test_abi3, build_sdist]
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -114,6 +114,8 @@ jobs:
         find . -name '*.tar.gz' -exec mv {} dist/ \;
     - name: List artifacts
       run: ls -R
+    - name: Fix sdist filename for PyPI
+      run: for f in dist/*.tar.gz; do mv "$f" "${f//-/_}"; done
     - name: Publish package distributions to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
     - name: Release
