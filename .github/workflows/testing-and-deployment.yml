@@ -83,8 +83,6 @@ jobs:
       run: |
         pip install pytest
         pytest -vv
-    - name: Fix sdist filename for PyPI
-      run: for f in dist/*.tar.gz; do mv "$f" "${f/mapdl-archive/mapdl_archive}"; done
     - uses: actions/upload-artifact@v6
       with:
         name: mapdl-archive-sdist
