@@ -76,7 +76,8 @@ class Archive(Mesh):
     Parameters
     ----------
     filename : string, pathlib.Path
-        Filename of block formatted cdb file
+        Filename of block formatted cdb file. Should end in ``".inp"``,
+        ``".cdb"``, ``".dat"``, or ``".npz"``. Uppercase extensions allowed.
     read_parameters : bool, default: False
         Optionally read parameters from the archive file.
     parse_vtk : bool, default: True
@@ -85,8 +86,8 @@ class Archive(Mesh):
         This parser creates quadratic elements if available. Set
         this to ``True`` to always create linear elements.
     allowable_types : list, optional
-        Allowable element types.  Defaults to all valid element
-        types in ``mapdl_archive.elements.valid_types``
+        Allowable element types.  Defaults to all valid element types in
+        ``mapdl_archive.elements.valid_types``
 
         See ``help(mapdl_archive.elements)`` for available element types.
     null_unallowed : bool, default: False
@@ -156,7 +157,7 @@ class Archive(Mesh):
         self._name: str = name
         self._archive: _reader.Archive | None = None
 
-        suffix = self._filename.suffix
+        suffix = self._filename.suffix.lower()
         if suffix in [".cdb", ".dat", ".inp"]:
             self._archive = _reader.Archive(
                 self.filename,
