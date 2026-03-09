@@ -37,16 +37,32 @@ Repository = "https://github.com/akaszynski/mapdl-archive"
 
 [tool.cibuildwheel]
 archs = ["auto64"]  # 64-bit only
-build = "cp310-* cp311-* cp312-*"  # Only build Python 3.10 - 3.12 since 3.12 is ABI3
+before-build = "pip install abi3audit"
+build = "cp310-* cp311-* cp312-* cp313-* cp314-*"
 skip = "*musllinux*"
 test-command = "pytest {project}/tests -vv"
 test-extras = ["tests"]
 
+[tool.cibuildwheel.linux]
+repair-wheel-command = [
+  "auditwheel repair -w {dest_dir} {wheel}",
+  "bash tools/audit_wheel.sh {wheel}"
+]
+
 [tool.cibuildwheel.macos]
 archs = ["native"]
+environment = {MACOSX_DEPLOYMENT_TARGET = "10.14"}  # Needed for full C++17 support on MacOS
+repair-wheel-command = [
+  "delocate-wheel --require-archs {delocate_archs} -w {dest_dir} -v {wheel}",
+  "bash tools/audit_wheel.sh {wheel}"
+]
 
-[tool.cibuildwheel.macos.environment]
-MACOSX_DEPLOYMENT_TARGET = "10.14"  # Needed for full C++17 support on MacOS
+[tool.cibuildwheel.windows]
+before-build = "pip install delvewheel abi3audit"
+repair-wheel-command = [
+  "delvewheel repair -w {dest_dir} {wheel}",
+  "bash tools/audit_wheel.sh {wheel}"
+]
 
 [tool.codespell]
 ignore-words-list = "POIN,parm"
