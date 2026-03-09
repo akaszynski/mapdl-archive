@@ -27,7 +27,7 @@ description = "Pythonic interface to MAPDL archive files."
 name = "mapdl_archive"
 readme = "README.rst"
 requires-python = ">=3.10"
-version = "0.2.9"
+version = "0.2.10"
 
 [project.optional-dependencies]
 tests = ["pytest"]
