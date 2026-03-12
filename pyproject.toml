@@ -44,6 +44,8 @@ test-command = "pytest {project}/tests -vv"
 test-extras = ["tests"]
 
 [tool.cibuildwheel.linux]
+manylinux-aarch64-image = "manylinux2014"
+manylinux-x86_64-image = "manylinux2014"
 repair-wheel-command = [
   "auditwheel repair -w {dest_dir} {wheel}",
   "bash tools/audit_wheel.sh {wheel}"
