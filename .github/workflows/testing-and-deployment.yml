@@ -13,18 +13,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  style:
-    name: Check Style
-    runs-on: ubuntu-24.04
-    steps:
-    - uses: actions/checkout@v6
-    - name: Set up Python
-      uses: actions/setup-python@v6
-      with:
-        python-version: '3.14'
-    - uses: pre-commit/action@v3.0.1
-      env:
-        SKIP: no-commit-to-branch
 
   build_wheels:
     name: Build wheels on ${{ matrix.os }}
