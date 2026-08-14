@@ -41,11 +41,13 @@ jobs:
     - name: Build sdist
       run: pipx run build --sdist
     - name: Install from sdist
-      run: pip install dist/mapdl*.tar.gz
+      # [vtk] as well as [tests]: PyVista is optional now, and this job is
+      # where the grid paths get covered. The cibuildwheel jobs deliberately
+      # install only [tests] -- PyVista's tree does not build inside
+      # manylinux -- and skip those tests instead.
+      run: pip install "$(ls dist/mapdl*.tar.gz)[tests,vtk]"
     - name: Run tests
-      run: |
-        pip install pytest
-        pytest -vv
+      run: pytest -vv
     - uses: actions/upload-artifact@v6
       with:
         name: mapdl-archive-sdist

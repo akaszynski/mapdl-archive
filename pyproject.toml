@@ -34,7 +34,7 @@ version = "0.3.dev0"
 # through it VTK) is only needed to turn one into an UnstructuredGrid, which is
 # ``Archive.grid``, ``parse_vtk=True`` and ``save_as_archive``. Install
 # ``mapdl-archive[vtk]`` for those.
-tests = ["pytest", "pyvista>=0.41.1"]
+tests = ["pytest"]
 vtk = ["pyvista>=0.41.1"]
 
 [project.urls]
