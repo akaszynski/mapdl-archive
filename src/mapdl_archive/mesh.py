@@ -201,12 +201,7 @@ class Mesh:
 
         """
         try:
-            from pyvista._vtk import (
-                numpy_to_vtk,
-                vtkCellArray,
-                vtkTypeInt32Array,
-                vtkTypeInt64Array,
-            )
+            from pyvista._vtk import numpy_to_vtk, vtkCellArray, vtkTypeInt32Array
             from pyvista.core.pointset import UnstructuredGrid
         except ImportError as exc:  # pragma: no cover - depends on the install
             raise ImportError(PYVISTA_REQUIRED) from exc
@@ -232,13 +227,18 @@ class Mesh:
             etype_map = np.zeros_like(ETYPE_MAP)
             etype_map[allowable_types] = ETYPE_MAP[allowable_types_arr]
 
-        # ANSYS element type to VTK map
-        type_ref = np.empty(2 << 16, np.int32)  # 131072
+        # ANSYS element type to VTK map. Zeroed rather than empty: only the
+        # element types named in ``ekey`` are assigned, and ``ans_to_vtk``
+        # indexes this by each element's type, so an element referencing a type
+        # the archive never declared would otherwise pick up whatever was in
+        # the buffer and be mapped to an arbitrary cell type. Zero is "skip".
+        type_ref = np.zeros(2 << 16, np.int32)  # 131072
         try:
             type_ref[self._ekey[:, 0]] = etype_map[self._ekey[:, 1]]
-        except:
-            print(self._ekey[:, 1])  # (debugging)
-            raise
+        except IndexError as exc:
+            raise IndexError(
+                f"Element type index out of range for the type map: {self._ekey[:, 1]}"
+            ) from exc
 
         if allowable_types is None or 200 in allowable_types:
             for etype_ind, etype in self._ekey:
@@ -284,12 +284,9 @@ class Mesh:
         grid = UnstructuredGrid()
         grid.points = nodes
 
-        # convert to vtk arrays without copying
-        dtype = offset.dtype
-        if dtype == np.int32:
-            vtk_dtype = vtkTypeInt32Array().GetDataType()
-        elif dtype == np.int64:
-            vtk_dtype = vtkTypeInt64Array().GetDataType()
+        # convert to vtk arrays without copying. ``ans_to_vtk`` always returns
+        # int32 offsets and connectivity, so there is nothing to branch on.
+        vtk_dtype = vtkTypeInt32Array().GetDataType()
         offset_vtk = numpy_to_vtk(offset, deep=False, array_type=vtk_dtype)
         cells_vtk = numpy_to_vtk(cells, deep=False, array_type=vtk_dtype)
 
