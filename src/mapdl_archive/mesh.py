@@ -2,7 +2,7 @@
 
 import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, TypeVar, Union, cast
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, TypeVar, Union, cast
 
 import numpy as np
 from numpy.typing import NDArray
@@ -88,6 +88,64 @@ TARGE170_MAP = {
 }
 
 T = TypeVar("T", np.float32, np.float64)
+
+
+def _uniform_cell_width(offset: NDArray[np.int32]) -> Optional[int]:
+    """
+    Return the points per cell when every cell is the same width.
+
+    Parameters
+    ----------
+    offset : numpy.ndarray
+        ``(n_cells + 1,)`` offsets into the connectivity.
+
+    Returns
+    -------
+    int or None
+        Points per cell, or ``None`` when the widths vary or there are no
+        cells. ANSYS archives are usually mixed, so this normally returns
+        ``None``.
+    """
+    if offset.size < 2:
+        return None
+
+    width = int(offset[1] - offset[0])
+    n_cells = offset.size - 1
+
+    # reject the common mixed case on a subtraction before scanning every offset
+    if width * n_cells != int(offset[-1] - offset[0]):
+        return None
+    if (np.diff(offset) != width).any():
+        return None
+    return width
+
+
+def _set_fixed_width(cell_array: Any, width: int, cells_vtk: Any) -> bool:
+    """
+    Store the cells fixed width, dropping the offsets.
+
+    VTK 9.6.2 added storage that keeps a single cell width in place of an
+    offset per cell, which is four bytes per cell less to build and to hold.
+
+    Parameters
+    ----------
+    cell_array : vtkCellArray
+        Cell array to populate.
+    width : int
+        Points per cell.
+    cells_vtk : vtkDataArray
+        Connectivity.
+
+    Returns
+    -------
+    bool
+        ``False`` when this VTK does not support it, leaving ``cell_array``
+        untouched so the caller can fall back to explicit offsets.
+    """
+    try:
+        return bool(cell_array.SetData(width, cells_vtk))
+    except TypeError:  # pragma: no cover - VTK older than 9.6.2
+        return False
 
 
 def unique_rows(a: NDArray[T]) -> Tuple[NDArray[T], NDArray[int], NDArray[int]]:
@@ -287,13 +345,14 @@ class Mesh:
         # convert to vtk arrays without copying. ``ans_to_vtk`` always returns
         # int32 offsets and connectivity, so there is nothing to branch on.
         vtk_dtype = vtkTypeInt32Array().GetDataType()
-        offset_vtk = numpy_to_vtk(offset, deep=False, array_type=vtk_dtype)
         cells_vtk = numpy_to_vtk(cells, deep=False, array_type=vtk_dtype)
-
         celltypes_vtk = numpy_to_vtk(celltypes, deep=False, array_type=VTK_UNSIGNED_CHAR)
 
         cell_array = vtkCellArray()
-        cell_array.SetData(offset_vtk, cells_vtk)
+        width = _uniform_cell_width(offset)
+        if width is None or not _set_fixed_width(cell_array, width, cells_vtk):
+            offset_vtk = numpy_to_vtk(offset, deep=False, array_type=vtk_dtype)
+            cell_array.SetData(offset_vtk, cells_vtk)
         grid.SetCells(celltypes_vtk, cell_array)
 
         # Store original ANSYS element and node information
