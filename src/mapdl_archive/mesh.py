@@ -2,20 +2,26 @@
 
 import warnings
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, TypeVar, Union, cast
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, TypeVar, Union, cast
 
 import numpy as np
 from numpy.typing import NDArray
-from pyvista.core.pointset import PolyData, UnstructuredGrid
-from vtkmodules.util.numpy_support import numpy_to_vtk as numpy_to_vtk
-from vtkmodules.vtkCommonCore import vtkTypeInt32Array, vtkTypeInt64Array
-from vtkmodules.vtkCommonDataModel import vtkCellArray
 
 from mapdl_archive import _archive, _reader
 from mapdl_archive.elements import ETYPE_MAP
 
+if TYPE_CHECKING:  # pragma: no cover
+    from pyvista.core.pointset import PolyData, UnstructuredGrid
+
 VTK_UNSIGNED_CHAR = 3
 COMP_DICT = Dict[str, NDArray[np.int32]]
+
+PYVISTA_REQUIRED = (
+    "Parsing an archive to a grid requires PyVista, which is an optional "
+    "dependency. Install it with: pip install mapdl-archive[vtk]\n"
+    "Reading the archive itself needs nothing extra: pass `parse_vtk=False` and "
+    "use `nodes`, `nnum`, `elem`, `elem_off`, `ekey` and friends."
+)
 
 INVALID_ALLOWABLE_TYPES = TypeError(
     "`allowable_types` must be an array of ANSYS element types from 1 and 300"
@@ -114,8 +120,8 @@ class Mesh:
     ):
         """Initialize the mesh."""
         self._etype: Optional[NDArray[np.int32]] = None  # internal element type reference
-        self._grid: Optional[UnstructuredGrid] = None
-        self._surf_cache: Optional[PolyData] = None  # cached external surface
+        self._grid: Optional["UnstructuredGrid"] = None
+        self._surf_cache: Optional["PolyData"] = None  # cached external surface
         self._enum: Optional[NDArray[np.int32]] = None  # cached element numbering
         self._etype_cache: Optional[NDArray[np.int32]] = None  # cached ansys ETYPE num
         self._rcon: Optional[NDArray[np.int32]] = None  # ansys element real constant
@@ -143,7 +149,7 @@ class Mesh:
         self._tshape_key: Optional[NDArray[np.int32]] = None
 
     @property
-    def _surf(self) -> PolyData:
+    def _surf(self) -> "PolyData":
         """Return the external surface."""
         if self._surf_cache is None:
             if self._grid is None:
@@ -176,7 +182,7 @@ class Mesh:
         null_unallowed: bool = False,
         fix_midside: bool = True,
         additional_checking: bool = False,
-    ) -> UnstructuredGrid:
+    ) -> "UnstructuredGrid":
         """Convert raw ANSYS nodes and elements to an UnstructuredGrid.
 
         Parameters
@@ -185,7 +191,32 @@ class Mesh:
             Adds additional midside nodes when ``True``. When ``False``,
             missing ANSYS cells will simply point to the first node.
 
+        Notes
+        -----
+        VTK is imported here rather than at module scope, so reading an archive
+        with ``parse_vtk=False`` needs neither VTK nor PyVista installed. The
+        names are resolved through PyVista so they come from whichever VTK build
+        it selected -- mixing a stock ``vtkCellArray`` into a ``cvista`` grid
+        raises ``TypeError: SetPolys argument 1``.
+
         """
+        try:
+            from pyvista.core.pointset import UnstructuredGrid
+        except ImportError as exc:  # pragma: no cover - depends on the install
+            raise ImportError(PYVISTA_REQUIRED) from exc
+
+        try:
+            from pyvista._vtk import (
+                numpy_to_vtk,
+                vtkCellArray,
+                vtkTypeInt32Array,
+                vtkTypeInt64Array,
+            )
+        except ImportError:  # pragma: no cover - PyVista older than 0.49
+            from vtkmodules.util.numpy_support import numpy_to_vtk
+            from vtkmodules.vtkCommonCore import vtkTypeInt32Array, vtkTypeInt64Array
+            from vtkmodules.vtkCommonDataModel import vtkCellArray
+
         if not self._has_nodes or not self._has_elements:
             # warnings.warn('Missing nodes or elements.  Unable to parse to vtk')
             return UnstructuredGrid()
@@ -821,3 +852,35 @@ def fix_missing_midside(
     nnum_new[:nnodes] = nnum
     nnum_new[nnodes:] = -1
     return nodes_new, new_angles, nnum_new
+
+
+# Names this module used to import at module scope. VTK is no longer imported
+# eagerly -- reading an archive with ``parse_vtk=False`` needs neither VTK nor
+# PyVista -- but anything that imported them from here keeps working, resolved
+# on first access. Resolved through PyVista so they come from whichever VTK
+# build it selected.
+_LAZY_VTK_NAMES = {
+    "PolyData": ("pyvista.core.pointset", None),
+    "UnstructuredGrid": ("pyvista.core.pointset", None),
+    "numpy_to_vtk": ("pyvista._vtk", "vtkmodules.util.numpy_support"),
+    "vtkCellArray": ("pyvista._vtk", "vtkmodules.vtkCommonDataModel"),
+    "vtkTypeInt32Array": ("pyvista._vtk", "vtkmodules.vtkCommonCore"),
+    "vtkTypeInt64Array": ("pyvista._vtk", "vtkmodules.vtkCommonCore"),
+}
+
+
+def __getattr__(name: str) -> object:
+    """Resolve the VTK names this module used to import eagerly."""
+    try:
+        primary, fallback = _LAZY_VTK_NAMES[name]
+    except KeyError:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}") from None
+
+    import importlib
+
+    try:
+        return getattr(importlib.import_module(primary), name)
+    except (ImportError, AttributeError):
+        if fallback is None:
+            raise
+        return getattr(importlib.import_module(fallback), name)

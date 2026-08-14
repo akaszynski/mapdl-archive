@@ -6,15 +6,16 @@ import os
 import pathlib
 import re
 import shutil
-from typing import Any, Sequence, TypeVar
+from typing import TYPE_CHECKING, Any, Sequence, TypeVar
 
 import numpy as np
 from numpy.typing import NDArray
-from pyvista import ID_TYPE, CellType
-from pyvista.core.pointset import UnstructuredGrid
 
 from mapdl_archive import _archive, _reader
 from mapdl_archive.mesh import Mesh
+
+if TYPE_CHECKING:  # pragma: no cover
+    from pyvista.core.pointset import UnstructuredGrid
 
 # types
 NPArray_FLOAT32 = NDArray[np.float32]
@@ -245,7 +246,7 @@ class Archive(Mesh):
         return txt
 
     @property
-    def grid(self) -> UnstructuredGrid:
+    def grid(self) -> "UnstructuredGrid":
         """Return a ``pyvista.UnstructuredGrid`` of the archive file.
 
         Examples
@@ -456,7 +457,7 @@ def _generate_etblock(
 
 def save_as_archive(
     filename: PathLike,
-    grid: UnstructuredGrid,
+    grid: "UnstructuredGrid",
     mtype_start: int = 1,
     etype_start: int = 1,
     real_constant_start: int = 1,
@@ -572,6 +573,15 @@ def save_as_archive(
     >>> pymapdl_reader.save_as_archive("archive.cdb", grid)
 
     """
+    # imported here so reading an archive needs neither PyVista nor VTK
+    try:
+        from pyvista import CellType
+        from pyvista.core.pointset import UnstructuredGrid
+    except ImportError as exc:  # pragma: no cover - depends on the install
+        from mapdl_archive.mesh import PYVISTA_REQUIRED
+
+        raise ImportError(PYVISTA_REQUIRED) from exc
+
     if hasattr(grid, "cast_to_unstructured_grid"):
         grid = grid.cast_to_unstructured_grid()
 
@@ -1053,6 +1063,8 @@ def _write_eblock(
     mode: str = "a",
 ) -> None:
     """Write EBLOCK to disk."""
+    from pyvista import ID_TYPE
+
     _archive.write_eblock(
         filename,
         elem_id.size,
@@ -1068,3 +1080,25 @@ def _write_eblock(
         nodenum.astype(np.int32, copy=False),
         mode,
     )
+
+
+# Names this module used to import at module scope. PyVista is no longer
+# imported eagerly -- reading an archive with ``parse_vtk=False`` needs neither
+# it nor VTK -- but anything that imported them from here keeps working.
+_LAZY_PYVISTA_NAMES = {
+    "CellType": "pyvista",
+    "ID_TYPE": "pyvista",
+    "UnstructuredGrid": "pyvista.core.pointset",
+}
+
+
+def __getattr__(name: str) -> object:
+    """Resolve the PyVista names this module used to import eagerly."""
+    try:
+        module = _LAZY_PYVISTA_NAMES[name]
+    except KeyError:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}") from None
+
+    import importlib
+
+    return getattr(importlib.import_module(module), name)
