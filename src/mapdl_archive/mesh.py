@@ -201,21 +201,15 @@ class Mesh:
 
         """
         try:
-            from pyvista.core.pointset import UnstructuredGrid
-        except ImportError as exc:  # pragma: no cover - depends on the install
-            raise ImportError(PYVISTA_REQUIRED) from exc
-
-        try:
             from pyvista._vtk import (
                 numpy_to_vtk,
                 vtkCellArray,
                 vtkTypeInt32Array,
                 vtkTypeInt64Array,
             )
-        except ImportError:  # pragma: no cover - PyVista older than 0.49
-            from vtkmodules.util.numpy_support import numpy_to_vtk
-            from vtkmodules.vtkCommonCore import vtkTypeInt32Array, vtkTypeInt64Array
-            from vtkmodules.vtkCommonDataModel import vtkCellArray
+            from pyvista.core.pointset import UnstructuredGrid
+        except ImportError as exc:  # pragma: no cover - depends on the install
+            raise ImportError(PYVISTA_REQUIRED) from exc
 
         if not self._has_nodes or not self._has_elements:
             # warnings.warn('Missing nodes or elements.  Unable to parse to vtk')
@@ -860,27 +854,31 @@ def fix_missing_midside(
 # on first access. Resolved through PyVista so they come from whichever VTK
 # build it selected.
 _LAZY_VTK_NAMES = {
-    "PolyData": ("pyvista.core.pointset", None),
-    "UnstructuredGrid": ("pyvista.core.pointset", None),
-    "numpy_to_vtk": ("pyvista._vtk", "vtkmodules.util.numpy_support"),
-    "vtkCellArray": ("pyvista._vtk", "vtkmodules.vtkCommonDataModel"),
-    "vtkTypeInt32Array": ("pyvista._vtk", "vtkmodules.vtkCommonCore"),
-    "vtkTypeInt64Array": ("pyvista._vtk", "vtkmodules.vtkCommonCore"),
+    "PolyData": "pyvista.core.pointset",
+    "UnstructuredGrid": "pyvista.core.pointset",
+    "numpy_to_vtk": "pyvista._vtk",
+    "vtkCellArray": "pyvista._vtk",
+    "vtkTypeInt32Array": "pyvista._vtk",
+    "vtkTypeInt64Array": "pyvista._vtk",
 }
 
 
 def __getattr__(name: str) -> object:
-    """Resolve the VTK names this module used to import eagerly."""
+    """Resolve the VTK names this module used to import eagerly.
+
+    Everything goes through PyVista so the class comes from the VTK build it
+    selected. Resolving against ``vtkmodules`` directly would hand back a stock
+    class while PyVista is on ``cvista``, which is the type mismatch this module
+    stopped importing eagerly in order to avoid.
+    """
     try:
-        primary, fallback = _LAZY_VTK_NAMES[name]
+        module = _LAZY_VTK_NAMES[name]
     except KeyError:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}") from None
 
     import importlib
 
     try:
-        return getattr(importlib.import_module(primary), name)
-    except (ImportError, AttributeError):
-        if fallback is None:
-            raise
-        return getattr(importlib.import_module(fallback), name)
+        return getattr(importlib.import_module(module), name)
+    except ImportError as exc:  # pragma: no cover - depends on the install
+        raise ImportError(PYVISTA_REQUIRED) from exc
