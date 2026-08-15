@@ -6,6 +6,9 @@ from pathlib import Path
 import numpy as np
 import numpy.typing as npt
 import pytest
+
+pytest.importorskip("pyvista")  # optional dependency
+
 from pyvista.core.celltype import CellType
 
 from mapdl_archive import _reader

@@ -1,10 +1,14 @@
 import os
 
 import pytest
-import pyvista
 
-# Necessary for CI plotting
-pyvista.OFF_SCREEN = True
+try:
+    import pyvista
+except ModuleNotFoundError:  # PyVista is an optional dependency
+    pyvista = None
+else:
+    # Necessary for CI plotting
+    pyvista.OFF_SCREEN = True
 
 
 @pytest.fixture(scope="session")

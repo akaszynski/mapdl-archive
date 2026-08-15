@@ -10,6 +10,9 @@ from numpy.typing import NDArray
 from pathlib import Path
 import numpy as np
 import pytest
+
+pytest.importorskip("pyvista")  # optional dependency
+
 import pyvista as pv
 from pyvista import CellType
 from pyvista import examples as pyvista_examples

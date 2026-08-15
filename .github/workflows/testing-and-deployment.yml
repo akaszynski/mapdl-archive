@@ -30,6 +30,42 @@ jobs:
         path: ./wheelhouse/*.whl
         if-no-files-found: error
 
+  test_wheels:
+    name: Test wheels on ${{ matrix.os }} py${{ matrix.python-version }}
+    needs: [build_wheels]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025, macos-latest]
+        python-version: ['3.10', '3.13']
+    steps:
+    - uses: actions/checkout@v6
+    - uses: actions/setup-python@v6
+      with:
+        python-version: ${{ matrix.python-version }}
+    - uses: actions/download-artifact@v6
+      with:
+        pattern: mapdl-archive-wheels-*
+        path: wheelhouse
+        merge-multiple: true
+    - name: Install dependencies
+      # From the index, and before the wheel: `--no-index` below has to block
+      # every index so the release on PyPI cannot be installed in place of the
+      # wheel under test, which also blocks its dependencies. PyVista is the
+      # `[vtk]` extra, installed so the grid paths are covered.
+      run: pip install pytest numpy pyvista
+    - name: Install the built wheel
+      shell: bash
+      run: pip install --no-index --find-links wheelhouse mapdl-archive
+    - name: Check the wheel under test is the installed one
+      shell: bash
+      run: |
+        cd "$RUNNER_TEMP"
+        python -c "import mapdl_archive; print('testing', mapdl_archive.__version__, mapdl_archive.__file__)"
+    - name: Run tests
+      run: pytest tests -vv
+
   build_sdist:
     name: Build source distribution
     runs-on: ubuntu-latest
@@ -41,11 +77,13 @@ jobs:
     - name: Build sdist
       run: pipx run build --sdist
     - name: Install from sdist
-      run: pip install dist/mapdl*.tar.gz
+      # [vtk] as well as [tests]: PyVista is optional now, and this job is
+      # where the grid paths get covered. The cibuildwheel jobs deliberately
+      # install only [tests] -- PyVista's tree does not build inside
+      # manylinux -- and skip those tests instead.
+      run: pip install "$(ls dist/mapdl*.tar.gz)[tests,vtk]"
     - name: Run tests
-      run: |
-        pip install pytest
-        pytest -vv
+      run: pytest -vv
     - uses: actions/upload-artifact@v6
       with:
         name: mapdl-archive-sdist
@@ -55,7 +93,7 @@ jobs:
   release:
     name: Release
     if: github.event_name == 'push' && contains(github.ref, 'refs/tags')
-    needs: [build_wheels, build_sdist]
+    needs: [build_wheels, test_wheels, build_sdist]
     runs-on: ubuntu-latest
     environment:
       name: pypi

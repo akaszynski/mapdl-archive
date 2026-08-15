@@ -2,20 +2,26 @@
 
 import warnings
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, TypeVar, Union, cast
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, TypeVar, Union, cast
 
 import numpy as np
 from numpy.typing import NDArray
-from pyvista.core.pointset import PolyData, UnstructuredGrid
-from vtkmodules.util.numpy_support import numpy_to_vtk as numpy_to_vtk
-from vtkmodules.vtkCommonCore import vtkTypeInt32Array, vtkTypeInt64Array
-from vtkmodules.vtkCommonDataModel import vtkCellArray
 
 from mapdl_archive import _archive, _reader
 from mapdl_archive.elements import ETYPE_MAP
 
+if TYPE_CHECKING:  # pragma: no cover
+    from pyvista.core.pointset import PolyData, UnstructuredGrid
+
 VTK_UNSIGNED_CHAR = 3
 COMP_DICT = Dict[str, NDArray[np.int32]]
+
+PYVISTA_REQUIRED = (
+    "Parsing an archive to a grid requires PyVista, which is an optional "
+    "dependency. Install it with: pip install mapdl-archive[vtk]\n"
+    "Reading the archive itself needs nothing extra: pass `parse_vtk=False` and "
+    "use `nodes`, `nnum`, `elem`, `elem_off`, `ekey` and friends."
+)
 
 INVALID_ALLOWABLE_TYPES = TypeError(
     "`allowable_types` must be an array of ANSYS element types from 1 and 300"
@@ -84,6 +90,64 @@ TARGE170_MAP = {
 T = TypeVar("T", np.float32, np.float64)
 
 
+def _uniform_cell_width(offset: NDArray[np.int32]) -> Optional[int]:
+    """
+    Return the points per cell when every cell is the same width.
+
+    Parameters
+    ----------
+    offset : numpy.ndarray
+        ``(n_cells + 1,)`` offsets into the connectivity.
+
+    Returns
+    -------
+    int or None
+        Points per cell, or ``None`` when the widths vary or there are no
+        cells. ANSYS archives are usually mixed, so this normally returns
+        ``None``.
+    """
+    if offset.size < 2:
+        return None
+
+    width = int(offset[1] - offset[0])
+    n_cells = offset.size - 1
+
+    # reject the common mixed case on a subtraction before scanning every offset
+    if width * n_cells != int(offset[-1] - offset[0]):
+        return None
+    if (np.diff(offset) != width).any():
+        return None
+    return width
+
+
+def _set_fixed_width(cell_array: Any, width: int, cells_vtk: Any) -> bool:
+    """
+    Store the cells fixed width, dropping the offsets.
+
+    VTK 9.6.2 added storage that keeps a single cell width in place of an
+    offset per cell, which is four bytes per cell less to build and to hold.
+
+    Parameters
+    ----------
+    cell_array : vtkCellArray
+        Cell array to populate.
+    width : int
+        Points per cell.
+    cells_vtk : vtkDataArray
+        Connectivity.
+
+    Returns
+    -------
+    bool
+        ``False`` when this VTK does not support it, leaving ``cell_array``
+        untouched so the caller can fall back to explicit offsets.
+    """
+    try:
+        return bool(cell_array.SetData(width, cells_vtk))
+    except TypeError:  # pragma: no cover - VTK older than 9.6.2
+        return False
+
+
 def unique_rows(a: NDArray[T]) -> Tuple[NDArray[T], NDArray[int], NDArray[int]]:
     """Return unique rows of an array and the indices of those rows."""
     if not a.flags.c_contiguous:
@@ -114,8 +178,8 @@ class Mesh:
     ):
         """Initialize the mesh."""
         self._etype: Optional[NDArray[np.int32]] = None  # internal element type reference
-        self._grid: Optional[UnstructuredGrid] = None
-        self._surf_cache: Optional[PolyData] = None  # cached external surface
+        self._grid: Optional["UnstructuredGrid"] = None
+        self._surf_cache: Optional["PolyData"] = None  # cached external surface
         self._enum: Optional[NDArray[np.int32]] = None  # cached element numbering
         self._etype_cache: Optional[NDArray[np.int32]] = None  # cached ansys ETYPE num
         self._rcon: Optional[NDArray[np.int32]] = None  # ansys element real constant
@@ -143,7 +207,7 @@ class Mesh:
         self._tshape_key: Optional[NDArray[np.int32]] = None
 
     @property
-    def _surf(self) -> PolyData:
+    def _surf(self) -> "PolyData":
         """Return the external surface."""
         if self._surf_cache is None:
             if self._grid is None:
@@ -176,7 +240,7 @@ class Mesh:
         null_unallowed: bool = False,
         fix_midside: bool = True,
         additional_checking: bool = False,
-    ) -> UnstructuredGrid:
+    ) -> "UnstructuredGrid":
         """Convert raw ANSYS nodes and elements to an UnstructuredGrid.
 
         Parameters
@@ -185,7 +249,21 @@ class Mesh:
             Adds additional midside nodes when ``True``. When ``False``,
             missing ANSYS cells will simply point to the first node.
 
+        Notes
+        -----
+        VTK is imported here rather than at module scope, so reading an archive
+        with ``parse_vtk=False`` needs neither VTK nor PyVista installed. The
+        names are resolved through PyVista so they come from whichever VTK build
+        it selected -- mixing a stock ``vtkCellArray`` into a ``cvista`` grid
+        raises ``TypeError: SetPolys argument 1``.
+
         """
+        try:
+            from pyvista._vtk import numpy_to_vtk, vtkCellArray, vtkTypeInt32Array
+            from pyvista.core.pointset import UnstructuredGrid
+        except ImportError as exc:  # pragma: no cover - depends on the install
+            raise ImportError(PYVISTA_REQUIRED) from exc
+
         if not self._has_nodes or not self._has_elements:
             # warnings.warn('Missing nodes or elements.  Unable to parse to vtk')
             return UnstructuredGrid()
@@ -207,13 +285,18 @@ class Mesh:
             etype_map = np.zeros_like(ETYPE_MAP)
             etype_map[allowable_types] = ETYPE_MAP[allowable_types_arr]
 
-        # ANSYS element type to VTK map
-        type_ref = np.empty(2 << 16, np.int32)  # 131072
+        # ANSYS element type to VTK map. Zeroed rather than empty: only the
+        # element types named in ``ekey`` are assigned, and ``ans_to_vtk``
+        # indexes this by each element's type, so an element referencing a type
+        # the archive never declared would otherwise pick up whatever was in
+        # the buffer and be mapped to an arbitrary cell type. Zero is "skip".
+        type_ref = np.zeros(2 << 16, np.int32)  # 131072
         try:
             type_ref[self._ekey[:, 0]] = etype_map[self._ekey[:, 1]]
-        except:
-            print(self._ekey[:, 1])  # (debugging)
-            raise
+        except IndexError as exc:
+            raise IndexError(
+                f"Element type index out of range for the type map: {self._ekey[:, 1]}"
+            ) from exc
 
         if allowable_types is None or 200 in allowable_types:
             for etype_ind, etype in self._ekey:
@@ -259,19 +342,17 @@ class Mesh:
         grid = UnstructuredGrid()
         grid.points = nodes
 
-        # convert to vtk arrays without copying
-        dtype = offset.dtype
-        if dtype == np.int32:
-            vtk_dtype = vtkTypeInt32Array().GetDataType()
-        elif dtype == np.int64:
-            vtk_dtype = vtkTypeInt64Array().GetDataType()
-        offset_vtk = numpy_to_vtk(offset, deep=False, array_type=vtk_dtype)
+        # convert to vtk arrays without copying. ``ans_to_vtk`` always returns
+        # int32 offsets and connectivity, so there is nothing to branch on.
+        vtk_dtype = vtkTypeInt32Array().GetDataType()
         cells_vtk = numpy_to_vtk(cells, deep=False, array_type=vtk_dtype)
-
         celltypes_vtk = numpy_to_vtk(celltypes, deep=False, array_type=VTK_UNSIGNED_CHAR)
 
         cell_array = vtkCellArray()
-        cell_array.SetData(offset_vtk, cells_vtk)
+        width = _uniform_cell_width(offset)
+        if width is None or not _set_fixed_width(cell_array, width, cells_vtk):
+            offset_vtk = numpy_to_vtk(offset, deep=False, array_type=vtk_dtype)
+            cell_array.SetData(offset_vtk, cells_vtk)
         grid.SetCells(celltypes_vtk, cell_array)
 
         # Store original ANSYS element and node information
@@ -821,3 +902,39 @@ def fix_missing_midside(
     nnum_new[:nnodes] = nnum
     nnum_new[nnodes:] = -1
     return nodes_new, new_angles, nnum_new
+
+
+# Names this module used to import at module scope. VTK is no longer imported
+# eagerly -- reading an archive with ``parse_vtk=False`` needs neither VTK nor
+# PyVista -- but anything that imported them from here keeps working, resolved
+# on first access. Resolved through PyVista so they come from whichever VTK
+# build it selected.
+_LAZY_VTK_NAMES = {
+    "PolyData": "pyvista.core.pointset",
+    "UnstructuredGrid": "pyvista.core.pointset",
+    "numpy_to_vtk": "pyvista._vtk",
+    "vtkCellArray": "pyvista._vtk",
+    "vtkTypeInt32Array": "pyvista._vtk",
+    "vtkTypeInt64Array": "pyvista._vtk",
+}
+
+
+def __getattr__(name: str) -> object:
+    """Resolve the VTK names this module used to import eagerly.
+
+    Everything goes through PyVista so the class comes from the VTK build it
+    selected. Resolving against ``vtkmodules`` directly would hand back a stock
+    class while PyVista is on ``cvista``, which is the type mismatch this module
+    stopped importing eagerly in order to avoid.
+    """
+    try:
+        module = _LAZY_VTK_NAMES[name]
+    except KeyError:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}") from None
+
+    import importlib
+
+    try:
+        return getattr(importlib.import_module(module), name)
+    except ImportError as exc:  # pragma: no cover - depends on the install
+        raise ImportError(PYVISTA_REQUIRED) from exc

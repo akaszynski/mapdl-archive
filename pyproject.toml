@@ -21,7 +21,7 @@ classifiers = [
   "Programming Language :: Python :: 3.14"
 ]
 dependencies = [
-  "pyvista>=0.41.1"
+  "numpy"
 ]
 description = "Pythonic interface to MAPDL archive files."
 name = "mapdl-archive"
@@ -30,7 +30,12 @@ requires-python = ">=3.10"
 version = "0.3.dev0"
 
 [project.optional-dependencies]
+# Reading an archive, and every array it exposes, is pure NumPy. PyVista (and
+# through it VTK) is only needed to turn one into an UnstructuredGrid, which is
+# ``Archive.grid``, ``parse_vtk=True`` and ``save_as_archive``. Install
+# ``mapdl-archive[vtk]`` for those.
 tests = ["pytest"]
+vtk = ["pyvista>=0.41.1"]
 
 [project.urls]
 Repository = "https://github.com/akaszynski/mapdl-archive"
@@ -40,8 +45,6 @@ archs = ["auto64"]  # 64-bit only
 before-build = "pip install abi3audit"
 build = "cp310-* cp311-* cp312-* cp313-* cp314-*"
 skip = "*musllinux*"
-test-command = "pytest {project}/tests -vv"
-test-extras = ["tests"]
 
 [tool.cibuildwheel.linux]
 manylinux-x86_64-image = "manylinux2014"
