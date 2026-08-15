@@ -49,13 +49,20 @@ jobs:
         pattern: mapdl-archive-wheels-*
         path: wheelhouse
         merge-multiple: true
+    - name: Install dependencies
+      # From the index, and before the wheel: `--no-index` below has to block
+      # every index so the release on PyPI cannot be installed in place of the
+      # wheel under test, which also blocks its dependencies. PyVista is the
+      # `[vtk]` extra, installed so the grid paths are covered.
+      run: pip install pytest numpy pyvista
     - name: Install the built wheel
-      # [vtk] so the grid paths are covered; the wheel itself needs neither
-      # PyVista nor VTK.
       shell: bash
-      run: pip install --no-index --find-links wheelhouse "mapdl-archive[vtk]"
-    - name: Install test dependencies
-      run: pip install pytest
+      run: pip install --no-index --find-links wheelhouse mapdl-archive
+    - name: Check the wheel under test is the installed one
+      shell: bash
+      run: |
+        cd "$RUNNER_TEMP"
+        python -c "import mapdl_archive; print('testing', mapdl_archive.__version__, mapdl_archive.__file__)"
     - name: Run tests
       run: pytest tests -vv
 
