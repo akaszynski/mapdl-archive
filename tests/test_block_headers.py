@@ -5,7 +5,6 @@ the cases stay small and readable.  None of it needs PyVista: reading an archive
 is pure NumPy.
 """
 
-import os
 from pathlib import Path
 from typing import Iterable, List, Sequence
 
@@ -33,8 +32,14 @@ def node_record(node_id: int, coords: Sequence[str], width: int = 16) -> str:
     return line + "".join(coord.rjust(width) for coord in coords)
 
 
-def elem_record(elem_id: int, nodes: Sequence[int], etype: int = 1, width: int = 8) -> str:
-    """Build one EBLOCK record for a linear element."""
+def elem_record(
+    elem_id: int, nodes: Sequence[int], etype: int = 1, width: int = 8, per_line: int = 19
+) -> str:
+    """Build one EBLOCK record.
+
+    MAPDL wraps at the number of fields the format line declares, so an element
+    with more than eight nodes occupies a second line.
+    """
     fields: List[int] = [
         1,  # material
         etype,  # element type
@@ -49,14 +54,20 @@ def elem_record(elem_id: int, nodes: Sequence[int], etype: int = 1, width: int =
         elem_id,
     ]
     fields.extend(nodes)
-    return "".join(f"{value:>{width}}" for value in fields)
+    lines = [
+        "".join(f"{value:>{width}}" for value in fields[start : start + per_line])
+        for start in range(0, len(fields), per_line)
+    ]
+    return "\n".join(lines)
 
 
 HEX = (1, 2, 3, 4, 5, 6, 7, 8)
+HEX20 = tuple(range(1, 21))
 
 # Every stored element is 8 header values + the element number + a padding zero
-# + 8 node ids.
+# + its node ids.
 INTS_PER_HEX = 18
+INTS_PER_HEX20 = 30
 
 
 def nblock(header: str, fmt: str, records: Iterable[str]) -> str:
@@ -370,6 +381,53 @@ def test_non_solid_eblocks_are_still_ignored(tmp_path: Path) -> None:
 
     assert archive.n_elem == 2
     assert np.array_equal(archive.enum, np.array([1, 2], dtype=np.int32))
+
+
+def test_multiline_elements_across_blocks(tmp_path: Path) -> None:
+    """Records that wrap onto a second line still concatenate correctly.
+
+    A countless block is sized by counting lines, which over-states a block of
+    twenty node elements by a factor of two, so the offsets are the check that
+    the over-estimate is not carried into the combined arrays.
+    """
+    path = write_cdb(
+        tmp_path,
+        nblock("NBLOCK,6,SOLID", "(3i8,6e16.9)", plain_records()),
+        eblock("EBLOCK,19,SOLID,", [elem_record(1, HEX20)]),
+        eblock("EBLOCK,19,SOLID,", [elem_record(2, HEX20), elem_record(3, HEX20)]),
+    )
+    archive = Archive(path, parse_vtk=False)
+
+    assert archive.n_elem == 3
+    assert np.array_equal(archive.enum, np.array([1, 2, 3], dtype=np.int32))
+    assert np.array_equal(
+        archive._archive.elem_off,
+        np.arange(4, dtype=np.int32) * INTS_PER_HEX20,
+    )
+    for element in archive.elem:
+        assert np.array_equal(element[-20:], np.array(HEX20, dtype=np.int32))
+
+
+def test_eblock_running_to_end_of_file_gains_no_phantom_element(tmp_path: Path) -> None:
+    """A block cut off by the end of the file must not invent a record.
+
+    Without a "-1" terminator there is nothing to stop on, and the line count
+    that sizes a countless block leaves room for one element per line.
+    """
+    path = tmp_path / "truncated.cdb"
+    path.write_text(
+        "/PREP7\nET,1,186\n"
+        + nblock("NBLOCK,6,SOLID", "(3i8,6e16.9)", plain_records())
+        + "EBLOCK,19,SOLID,\n(19i8)\n"
+        + elem_record(7, HEX20)
+        + "\n"
+    )
+    archive = Archive(str(path), parse_vtk=False)
+
+    assert archive.n_elem == 1
+    assert np.array_equal(archive.enum, np.array([7], dtype=np.int32))
+    assert np.array_equal(archive._archive.elem_off, np.array([0, INTS_PER_HEX20], dtype=np.int32))
+    assert archive._archive.elem.size == INTS_PER_HEX20
 
 
 def test_read_eblock_false_reads_no_elements(tmp_path: Path) -> None:

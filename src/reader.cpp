@@ -509,10 +509,13 @@ int CountEBlockRecordLines(MemoryMappedFile &memmap, int isz) {
 
     int count = 0;
     while (!memmap.eof()) {
-        if (memmap.current_line_length() == 0) {
+        size_t line_length = memmap.current_line_length();
+        if (line_length == 0) {
             break; // a blank line ends the block
         }
-        if (checkneg(memmap.current, isz)) {
+        // Never look past the end of the line: the last one of the file need
+        // not be as wide as the integer field.
+        if (checkneg(memmap.current, (int)std::min(line_length, (size_t)isz))) {
             break; // the "-1" terminator
         }
         count++;
@@ -523,27 +526,32 @@ int CountEBlockRecordLines(MemoryMappedFile &memmap, int isz) {
     return count;
 }
 
+// Read up to ``nelem`` element records. ``isz`` is the width of the integer
+// field, taken from the format line the memory map is positioned on. Reports
+// the number of records actually read through ``n_elem_read``, which is less
+// than ``nelem`` whenever the block ends early.
 int ReadEBlockMemMap(
-    MemoryMappedFile &memmap, int *elem_off, int *elem, const int nelem, int *n_elem_read) {
+    MemoryMappedFile &memmap,
+    int *elem_off,
+    int *elem,
+    const int nelem,
+    const int isz,
+    int *n_elem_read) {
     int i, j, n_node;
 
-    // set to start of the NBLOCK
-    // char line[256]; // maximum of 19 values, at most 13 char per int is 228
+    int n_values;
 
-    char *i_pos = strchr(memmap.current, 'i');
-    char *close_paren_pos = strchr(memmap.current, ')');
-    if (i_pos == NULL || close_paren_pos == NULL || i_pos > close_paren_pos) {
-        fprintf(stderr, "Invalid line format\n");
-        return 0;
-    }
-
-    int isz, n_char, n_values;
-    sscanf(i_pos + 1, "%d", &isz);
-
-    // Loop through elements
+    // Loop through elements, starting past the format line
     memmap.seek_eol();
     int c = 0;
     for (i = 0; i < nelem; ++i) {
+        // A block that runs to the end of the file has no "-1" terminator to
+        // stop on, and ``nelem`` is only an upper bound whenever the header did
+        // not carry a count.
+        if (memmap.eof()) {
+            break;
+        }
+
         // store start of each element
         elem_off[i] = c;
 
@@ -764,14 +772,18 @@ int ReadNBlockMemMap(
 // Width of the integer field of an EBLOCK format line such as "(19i8)".
 // Returns -1 when the line is not a format line.
 int GetEBlockIntSize(MemoryMappedFile &memmap) {
-    char *i_pos = strchr(memmap.current, 'i');
-    char *close_paren_pos = strchr(memmap.current, ')');
-    if (i_pos == NULL || close_paren_pos == NULL || i_pos > close_paren_pos) {
+    // Take a copy of the line: the memory map is not guaranteed to be NUL
+    // terminated, so strchr and sscanf must not be pointed straight at it.
+    std::string fmt(memmap.current, memmap.current_line_length());
+    size_t i_pos = fmt.find('i');
+    size_t close_paren_pos = fmt.find(')');
+    if (i_pos == std::string::npos || close_paren_pos == std::string::npos ||
+        i_pos > close_paren_pos) {
         return -1;
     }
 
     int isz = 0;
-    if (sscanf(i_pos + 1, "%d", &isz) != 1 || isz <= 0) {
+    if (sscanf(fmt.c_str() + i_pos + 1, "%d", &isz) != 1 || isz <= 0) {
         return -1;
     }
     return isz;
@@ -1053,7 +1065,7 @@ class Archive {
 
         int n_block_elem = 0;
         int elem_sz = ReadEBlockMemMap(
-            memmap, block_off.data(), block_elem.data(), max_elem, &n_block_elem);
+            memmap, block_off.data(), block_elem.data(), max_elem, isz, &n_block_elem);
 
         // Append this block to whatever has already been read, shifting its
         // offsets past the elements accumulated so far.
