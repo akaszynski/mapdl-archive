@@ -26,6 +26,11 @@ using namespace nb::literals;
 /* We are on Windows */
 #if defined(_WIN32) || defined(_WIN64)
 #define strtok_r strtok_s
+// windows.h defines min and max as macros, which turns any std::min(...) into
+// std::(...) and fails the build with C2589.
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <windows.h>
 #else
 #include <fcntl.h>
