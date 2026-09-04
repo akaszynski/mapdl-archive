@@ -1,11 +1,14 @@
 #include <algorithm>
+#include <climits>
 #include <iostream>
 #include <math.h>
 #include <sstream>
+#include <stdexcept>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -83,10 +86,117 @@ static inline int checkneg(char *raw, int intsz) {
     return 0;
 }
 
+//=============================================================================
+// Block header parsing
+//=============================================================================
+// NBLOCK and EBLOCK headers are comma delimited and their trailing count fields
+// are optional:
+//
+//   NBLOCK,NUMFIELD,Solkey,NDMAX,NDSEL
+//   EBLOCK,NUMNODES,Solkey,NDMAX,NDSEL
+//
+// Real decks write all of "NBLOCK,6,SOLID,70631,10504", "NBLOCK,6,SOLID,105",
+// "EBLOCK,19,SOLID      ,80" and "EBLOCK,19,SOLID,". Splitting on the last
+// comma therefore reads "SOLID" or "" as the count, so the fields have to be
+// addressed by position instead.
+static std::vector<std::string> SplitHeaderFields(const std::string &line) {
+    std::vector<std::string> fields;
+    std::string field;
+    std::stringstream ss(line);
+    while (std::getline(ss, field, ',')) {
+        size_t first = field.find_first_not_of(" \t\r\n");
+        if (first == std::string::npos) {
+            fields.push_back(std::string());
+        } else {
+            size_t last = field.find_last_not_of(" \t\r\n");
+            fields.push_back(field.substr(first, last - first + 1));
+        }
+    }
+    return fields;
+}
+
+// Read one header field as a positive count. Returns -1 when the field is
+// missing, blank, or not a plain integer, which the caller treats as "the deck
+// did not tell us, go and count the records".
+static int ParseOptionalCount(const std::vector<std::string> &fields, size_t index) {
+    if (index >= fields.size() || fields[index].empty()) {
+        return -1;
+    }
+    const std::string &field = fields[index];
+    size_t consumed = 0;
+    long value = 0;
+    try {
+        value = std::stol(field, &consumed);
+    } catch (const std::exception &) {
+        return -1;
+    }
+    if (consumed != field.size() || value <= 0 || value > INT_MAX) {
+        return -1;
+    }
+    return (int)value;
+}
+
+// Pick the record count out of an already split block header, preferring NDSEL
+// (the number actually written) and falling back to NDMAX. Returns -1 when the
+// deck omitted both.
+static inline int GetBlockRecordCount(const std::vector<std::string> &fields) {
+    int count = ParseOptionalCount(fields, 4); // NDSEL
+    if (count < 0) {
+        count = ParseOptionalCount(fields, 3); // NDMAX
+    }
+    return count;
+}
+
+//=============================================================================
+// NBLOCK line classification
+//=============================================================================
+// Returns 1 for a node record, 0 for a clean end of the block, and -1 for a
+// line that is neither (truncated or otherwise corrupt), which the caller
+// reports as a corrupt archive.
+//
+// A node record starts with a right justified positive node number, so the
+// first ``id_width`` characters are spaces and digits. The block terminator
+// "N,R5.3,LOC,-1" starts with a letter, a short record list ends with "-1", and
+// the next keyword in the file starts with a letter or "/".
+static inline int ClassifyNBlockLine(const char *pos, const char *file_end, int id_width) {
+    if (pos >= file_end) {
+        return 0; // end of file ends the block
+    }
+    if (*pos == '\n' || *pos == '\r') {
+        return 0; // a blank line ends the block
+    }
+
+    bool seen_digit = false;
+    for (int c = 0; c < id_width && pos + c < file_end; ++c) {
+        char ch = pos[c];
+        if (ch == '\n' || ch == '\r') {
+            break;
+        } else if (ch == ' ') {
+            continue;
+        } else if (ch >= '0' && ch <= '9') {
+            seen_digit = true;
+        } else if (
+            ch == '-' || ch == '/' || (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z')) {
+            return 0; // "-1", "N,R5.3,LOC,-1", "EBLOCK", "/EOF", ...
+        } else {
+            return -1; // NUL padding or other junk: the archive is corrupt
+        }
+    }
+
+    return seen_digit ? 1 : 0;
+}
+
 // Reads various ansys float formats in the form of
 // "3.7826539829200E+00"
 // "1.0000000000000E-001"
 // "        -6.01203 "
+// "29.184036609179"
+//
+// The number of digits before the decimal point is not fixed: scientific
+// notation always writes exactly one, but plain "F" style output (for example
+// the "(3i8,6e16.9)" that some pre-processors emit) writes as many as the value
+// needs. Every loop below advances ``raw`` unconditionally so that an
+// unexpected character ends the field rather than spinning forever.
 //
 // fltsz : Number of characters to read in a floating point number
 static inline int ans_strtod(char *raw, int fltsz, double *arr) {
@@ -104,25 +214,35 @@ static inline int ans_strtod(char *raw, int fltsz, double *arr) {
         raw++;
     }
 
+    // A field containing nothing but whitespace is zero, not garbage.
+    if (raw >= end) {
+        *arr = 0;
+        return 0;
+    }
+
     // either a number or a sign
     if (*raw == '-') {
         sign = -1;
         ++raw;
+    } else if (*raw == '+') {
+        ++raw;
     }
 
-    // next value is always a number
-    // Use integer arithmetric and then convert to a float
-    uint64_t val_int = *raw++ - '0';
-    raw++; // next value is always a "."
+    // Integer part. Use integer arithmetic and then convert to a float.
+    uint64_t val_int = 0;
+    while (raw < end && *raw >= '0' && *raw <= '9') {
+        val_int = val_int * 10 + (uint64_t)(*raw - '0');
+        raw++;
+    }
 
-    // Read through the rest of the number
+    // Fractional part, accumulated into the same integer and scaled below.
     int decimal_digits = 0;
-    while (raw < end) {
-        if (*raw == 'e' || *raw == 'E') { // incredibly, can be lowercase
-            break;
-        } else if (*raw >= '0' && *raw <= '9') {
-            val_int = val_int * 10 + (*raw++ - '0');
+    if (raw < end && *raw == '.') {
+        raw++;
+        while (raw < end && *raw >= '0' && *raw <= '9') {
+            val_int = val_int * 10 + (uint64_t)(*raw - '0');
             decimal_digits++;
+            raw++;
         }
     }
 
@@ -138,20 +258,21 @@ static inline int ans_strtod(char *raw, int fltsz, double *arr) {
     // 1.0000000000000E-001
     int evalue = 0;
     int esign = 1;
-    if (*raw == 'e' || *raw == 'E') {
-        raw++; // skip "E"
-        // always a sign of some sort
-        if (*raw == '-') {
-            esign = -1;
-        }
-        raw++;
-
-        while (raw < end) {
-            // read to whitespace or end of the line
-            if (*raw == ' ' || *raw == '\0') {
-                break;
+    if (raw < end && (*raw == 'e' || *raw == 'E')) { // incredibly, can be lowercase
+        raw++;                                       // skip "E"
+        // usually a sign of some sort, but it is not guaranteed
+        if (raw < end && (*raw == '-' || *raw == '+')) {
+            if (*raw == '-') {
+                esign = -1;
             }
-            evalue = evalue * 10 + (*raw++ - '0');
+            raw++;
+        }
+
+        // Only digits belong to the exponent. Guarding on them keeps a trailing
+        // "\r" or a short field from being folded in as if it were one.
+        while (raw < end && *raw >= '0' && *raw <= '9') {
+            evalue = evalue * 10 + (*raw - '0');
+            raw++;
         }
         if (esign == 1) {
             val *= power_of_ten(evalue);
@@ -307,6 +428,13 @@ class MemoryMappedFile {
 
     bool eof() { return current >= start + size; }
 
+    // One past the last mapped byte. Needed to classify a line without running
+    // off the end of the mapping.
+    const char *file_end() const { return start + size; }
+
+    // Rewind/forward to an absolute offset, as returned by tellg().
+    void seekg(off_t pos) { current = start + pos; }
+
     bool read_line() {
         line.clear();
         if (current >= start + size) {
@@ -345,7 +473,58 @@ class MemoryMappedFile {
     }
 };
 
-int ReadEBlockMemMap(MemoryMappedFile &memmap, int *elem_off, int *elem, const int nelem) {
+// Count the node records of an NBLOCK whose header omitted NDMAX and NDSEL.
+// Expects to be positioned on the first record and leaves the position
+// unchanged. A corrupt record is included in the count so that the read pass
+// still reaches it and reports it.
+int CountNBlockRecords(MemoryMappedFile &memmap, int id_width) {
+    off_t saved = memmap.tellg();
+    int count = 0;
+
+    while (!memmap.eof()) {
+        int kind = ClassifyNBlockLine(memmap.current, memmap.file_end(), id_width);
+        if (kind == 1) {
+            count++;
+            memmap.seek_eol();
+            continue;
+        }
+        if (kind < 0) {
+            count++;
+        }
+        break;
+    }
+
+    memmap.seekg(saved);
+    return count;
+}
+
+// Upper bound on the number of element records of an EBLOCK whose header
+// omitted its count. Expects to be positioned on the format line and leaves the
+// position unchanged. An element occupies at least one line, so counting lines
+// up to the "-1" terminator can only over-estimate, and ReadEBlockMemMap
+// reports how many records it actually read.
+int CountEBlockRecordLines(MemoryMappedFile &memmap, int isz) {
+    off_t saved = memmap.tellg();
+    memmap.seek_eol(); // skip the format line
+
+    int count = 0;
+    while (!memmap.eof()) {
+        if (memmap.current_line_length() == 0) {
+            break; // a blank line ends the block
+        }
+        if (checkneg(memmap.current, isz)) {
+            break; // the "-1" terminator
+        }
+        count++;
+        memmap.seek_eol();
+    }
+
+    memmap.seekg(saved);
+    return count;
+}
+
+int ReadEBlockMemMap(
+    MemoryMappedFile &memmap, int *elem_off, int *elem, const int nelem, int *n_elem_read) {
     int i, j, n_node;
 
     // set to start of the NBLOCK
@@ -464,8 +643,13 @@ int ReadEBlockMemMap(MemoryMappedFile &memmap, int *elem_off, int *elem, const i
         }
     }
 
-    // Return total data read
-    elem_off[nelem] = c;
+    // Return total data read. Write the closing offset at the number of records
+    // actually read: when the block ends early (a "-1" before the declared
+    // count, or a count that was only an upper bound) that is not ``nelem``.
+    elem_off[i] = c;
+    if (n_elem_read != NULL) {
+        *n_elem_read = i;
+    }
     return c;
 }
 
@@ -497,9 +681,13 @@ int ReadNBlockMemMap(
         // Read a line from the file
         int count = memmap.current_line_length();
 
-        // It's possible that less nodes are written to the record than
-        // indicated.  In this case the line starts with a -1
-        if (memmap[0] == '-') {
+        // It's possible that fewer nodes are written to the record than
+        // indicated, and when the count came from NDMAX rather than NDSEL the
+        // estimate is always high. Stop on anything that is not a node record:
+        // a "-1", the "N,R5.3,LOC,-1" terminator, the next keyword, or EOF. A
+        // line that is none of those falls through to the node number check
+        // below, which reports the archive as corrupt.
+        if (ClassifyNBlockLine(memmap.current, memmap.file_end(), d_size[0]) == 0) {
             break;
         }
 
@@ -573,18 +761,20 @@ int ReadNBlockMemMap(
     return i;
 }
 
-int getSizeOfEBLOCK(const std::string &line) {
-    size_t lastComma = line.rfind(',');
-    if (lastComma == std::string::npos) {
-        throw std::runtime_error("No comma found in the input line");
+// Width of the integer field of an EBLOCK format line such as "(19i8)".
+// Returns -1 when the line is not a format line.
+int GetEBlockIntSize(MemoryMappedFile &memmap) {
+    char *i_pos = strchr(memmap.current, 'i');
+    char *close_paren_pos = strchr(memmap.current, ')');
+    if (i_pos == NULL || close_paren_pos == NULL || i_pos > close_paren_pos) {
+        return -1;
     }
 
-    int nelem = std::stoi(line.substr(lastComma + 1)); // Extract and convert
-    if (nelem == 0) {
-        throw std::runtime_error("Unable to read element block");
+    int isz = 0;
+    if (sscanf(i_pos + 1, "%d", &isz) != 1 || isz <= 0) {
+        return -1;
     }
-
-    return nelem;
+    return isz;
 }
 
 struct NodeBlockFormat {
@@ -701,8 +891,11 @@ class Archive {
     std::vector<std::vector<int>> elem_type;
     std::unordered_map<int, std::vector<std::vector<int>>> keyopt;
 
-    // Element block
+    // Element block. Elements from every SOLID EBLOCK in the file accumulate
+    // here in file order and are published through elem_arr/elem_off_arr.
     int n_elem = 0;
+    std::vector<int> elem_data_all;
+    std::vector<int> elem_off_all;
     NDArray<int, 1> elem_arr;
     NDArray<int, 1> elem_off_arr;
 
@@ -816,15 +1009,13 @@ class Archive {
     }
 
     // Read EBLOCK
+    //
+    // A file may hold any number of SOLID element blocks; real decks split one
+    // model across a block per component. Every SOLID block is read and the
+    // elements are concatenated in file order. A model with a single block is
+    // unaffected: the accumulated arrays are then exactly the one block.
     void ReadEBlock() {
-        // Sometimes, DAT files contain two EBLOCKs. Read only the first block.
-        if (eblock_is_read) {
-            return;
-        }
-
         // Assumes already start of EBLOCK
-        std::istringstream iss(memmap.line);
-
         // Only read in SOLID eblocks
         std::transform(
             memmap.line.begin(), memmap.line.end(), memmap.line.begin(), [](unsigned char c) {
@@ -834,21 +1025,66 @@ class Archive {
             return;
         }
 
-        // Get size of EBLOCK from the last item in the line
-        // Example: "EBLOCK,19,SOLID,,3588"
-        n_elem = getSizeOfEBLOCK(memmap.line);
+        // Header: "EBLOCK,NUMNODES,Solkey,NDMAX,NDSEL", where NDMAX and NDSEL
+        // are both optional. Examples seen in the wild: "EBLOCK,19,SOLID,4644,4",
+        // "EBLOCK,19,SOLID      ,80" and "EBLOCK,19,SOLID,".
+        std::vector<std::string> fields = SplitHeaderFields(memmap.line);
+        int n_elem_declared = GetBlockRecordCount(fields);
 
-        // we have to allocate memory for the maximum size since we don't know that a priori
-        int *elem_data = AllocateArray<int>(n_elem * 30);
-        elem_off_arr = MakeNDArray<int, 1>({n_elem + 1});
-        int elem_sz = ReadEBlockMemMap(memmap, elem_off_arr.data(), elem_data, n_elem);
+        // The line after the header is the format, e.g. "(19i8)".
+        int isz = GetEBlockIntSize(memmap);
+        if (isz < 0) {
+            throw std::runtime_error(
+                "Unable to read the element block format line of \"" + memmap.line + "\".");
+        }
 
-        // wrap the raw data but limit it to the size of the number of elements read
-        // Note: This is faster than reallocating a new array but will use more memory
-        elem_arr = WrapNDarray<int, 1>(elem_data, {elem_sz});
+        // When the deck did not write a count, count the records instead of
+        // guessing. This is an upper bound; ReadEBlockMemMap reports the exact
+        // number it read.
+        int max_elem =
+            (n_elem_declared > 0) ? n_elem_declared : CountEBlockRecordLines(memmap, isz);
+        if (max_elem <= 0) {
+            return; // an empty block contributes nothing
+        }
 
-        // must mark eblock is read since we can only read one eblock per archive file
+        // We have to allocate for the maximum size since we don't know it a priori
+        std::vector<int> block_elem((size_t)max_elem * 30);
+        std::vector<int> block_off((size_t)max_elem + 1);
+
+        int n_block_elem = 0;
+        int elem_sz = ReadEBlockMemMap(
+            memmap, block_off.data(), block_elem.data(), max_elem, &n_block_elem);
+
+        // Append this block to whatever has already been read, shifting its
+        // offsets past the elements accumulated so far.
+        int base = (int)elem_data_all.size();
+        elem_off_all.reserve(elem_off_all.size() + (size_t)n_block_elem);
+        for (int i = 0; i < n_block_elem; i++) {
+            elem_off_all.push_back(block_off[i] + base);
+        }
+        elem_data_all.insert(
+            elem_data_all.end(), block_elem.begin(), block_elem.begin() + elem_sz);
+
         eblock_is_read = true;
+        BuildElementArrays();
+    }
+
+    // Publish the accumulated element blocks as the arrays exposed to Python.
+    // Called after each block so that the members stay consistent whether the
+    // file is read in one pass or read_eblock() is driven by hand.
+    void BuildElementArrays() {
+        n_elem = (int)elem_off_all.size();
+
+        int *elem_data =
+            AllocateArray<int>(elem_data_all.size() > 0 ? elem_data_all.size() : 1);
+        std::copy(elem_data_all.begin(), elem_data_all.end(), elem_data);
+        elem_arr = WrapNDarray<int, 1>(elem_data, {(int)elem_data_all.size()});
+
+        // The offset array carries a closing entry with the total size.
+        elem_off_arr = MakeNDArray<int, 1>({n_elem + 1});
+        int *off_data = elem_off_arr.data();
+        std::copy(elem_off_all.begin(), elem_off_all.end(), off_data);
+        off_data[n_elem] = (int)elem_data_all.size();
     }
 
     // Read:
@@ -1000,31 +1236,37 @@ class Archive {
         }
         nblock_start = pos;
 
-        // Get size of NBLOCK
+        // Header: "NBLOCK,NUMFIELD,Solkey,NDMAX,NDSEL", where NDMAX and NDSEL
+        // are both optional. Decks write all of "NBLOCK,6,SOLID,70631,10504",
+        // "NBLOCK,6,SOLID,105" and "NBLOCK,6,SOLID", so the count has to be
+        // taken by field position rather than from the last comma.
         // Assumes line is at NBLOCK
-        // std::cout << "line: " << memmap.line << std::endl;
-        try {
-            // Number of nodes is last item in string
-            n_nodes = std::stoi(memmap.line.substr(memmap.line.rfind(',') + 1));
-        } catch (...) {
-            std::cerr << "Failed to read number of nodes when reading:" << memmap.line
-                      << std::endl;
-            return;
+        std::vector<std::string> fields = SplitHeaderFields(memmap.line);
+        int n_nodes_declared = GetBlockRecordCount(fields);
+
+        // Get format of nblock, e.g. "(3i8,6e16.9)". This has to happen before
+        // the allocation because counting the records needs the field widths.
+        memmap.read_line();
+        NodeBlockFormat nfmt = GetNodeBlockFormat(memmap.line);
+        if (nfmt.d_size[0] <= 0 || nfmt.f_size <= 0) {
+            throw std::runtime_error(
+                "Unable to read the node block format line of \"" + memmap.line + "\".");
         }
+
+        // When the deck did not write a count, count the records rather than
+        // guessing at one and silently dropping the block.
+        n_nodes = (n_nodes_declared > 0) ? n_nodes_declared
+                                         : CountNBlockRecords(memmap, nfmt.d_size[0]);
         if (debug) {
             std::cout << "Reading " << n_nodes << " nodes" << std::endl;
         }
 
-        int *nnum_data = AllocateArray<int>(n_nodes);
-        double *nodes_data = AllocateArray<double>(n_nodes * 3);
+        int *nnum_data = AllocateArray<int>(n_nodes > 0 ? n_nodes : 1);
+        double *nodes_data = AllocateArray<double>(n_nodes > 0 ? n_nodes * 3 : 1);
 
         // often angles aren't written, so it makes sense to initialize this to
         // zero
-        double *node_angles_data = AllocateArray<double>(n_nodes * 3, true);
-
-        // Get format of nblock
-        memmap.read_line();
-        NodeBlockFormat nfmt = GetNodeBlockFormat(memmap.line);
+        double *node_angles_data = AllocateArray<double>(n_nodes > 0 ? n_nodes * 3 : 1, true);
 
         // Return actual number of nodes read and wrap the raw data
         // std::cout << memmap.tellg() << std::endl;
@@ -1184,8 +1426,11 @@ class Archive {
                     memmap.line.compare(0, 6, "etbloc") == 0) {
                     ReadETBlock();
                 } else if (
-                    memmap.line.compare(0, 6, "EBLOCK") == 0 ||
-                    memmap.line.compare(0, 6, "eblock") == 0 && read_eblock) {
+                    (memmap.line.compare(0, 6, "EBLOCK") == 0 ||
+                     memmap.line.compare(0, 6, "eblock") == 0) &&
+                    read_eblock) {
+                    // "&&" binds tighter than "||", so without these parentheses
+                    // an upper case EBLOCK was read even when read_eblock was off.
                     ReadEBlock();
                 }
             } else if (first_char == 'K' || first_char == 'k') {
