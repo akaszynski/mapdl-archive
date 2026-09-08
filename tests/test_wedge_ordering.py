@@ -9,6 +9,7 @@ from mapdl_archive import Archive, save_as_archive
 
 
 @pytest.mark.parametrize("quadratic", [False, True])
+@pytest.mark.filterwarnings("error::pyvista.PyVistaDeprecationWarning")
 def test_wedge_archive_order_and_roundtrip(tmp_path, quadratic):
     points = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1], [1, 0, 1], [0, 1, 1]], float)
     edges = np.array([[0, 1], [1, 2], [2, 0], [3, 4], [4, 5], [5, 3], [0, 3], [1, 4], [2, 5]])
