@@ -1065,6 +1065,9 @@ def _write_eblock(
     """Write EBLOCK to disk."""
     from pyvista import ID_TYPE
 
+    from mapdl_archive.mesh import _vtk_wedge_order
+
+    cells = _vtk_wedge_order(cells, offset, celltypes)
     _archive.write_eblock(
         filename,
         elem_id.size,
