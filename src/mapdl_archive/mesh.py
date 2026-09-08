@@ -259,6 +259,7 @@ class Mesh:
 
         """
         try:
+            from pyvista import vtk_version_info
             from pyvista._vtk import numpy_to_vtk, vtkCellArray, vtkTypeInt32Array
             from pyvista.core.pointset import UnstructuredGrid
         except ImportError as exc:  # pragma: no cover - depends on the install
@@ -323,6 +324,7 @@ class Mesh:
             self._elem_off,
             type_ref,
             self.nnum,
+            vtk_97_wedges=vtk_version_info >= (9, 7),
         )  # for reset_midside
 
         nodes, angles, nnum = self.nodes, self.node_angles, self.nnum

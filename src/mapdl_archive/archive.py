@@ -1063,7 +1063,7 @@ def _write_eblock(
     mode: str = "a",
 ) -> None:
     """Write EBLOCK to disk."""
-    from pyvista import ID_TYPE
+    from pyvista import ID_TYPE, vtk_version_info
 
     _archive.write_eblock(
         filename,
@@ -1079,6 +1079,7 @@ def _write_eblock(
         typenum.astype(np.int32, copy=False),
         nodenum.astype(np.int32, copy=False),
         mode,
+        vtk_97_wedges=vtk_version_info >= (9, 7),
     )
 
 

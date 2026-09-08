@@ -1519,7 +1519,7 @@ class Archive {
 
     // Convert ansys style connectivity to VTK connectivity
     // type_ref is a mapping between ansys element types and VTK element types
-    nb::tuple ToVTK(NDArray<int, 1> type_ref) {
+    nb::tuple ToVTK(NDArray<int, 1> type_ref, const bool vtk_97_wedges) {
         NDArray<int, 1> offset_arr = MakeNDArray<int, 1>({n_elem + 1});
         NDArray<uint8_t, 1> celltypes_arr = MakeNDArray<uint8_t, 1>({n_elem});
 
@@ -1535,7 +1535,8 @@ class Archive {
             nnum_arr.data(),
             offset_arr.data(),
             cell_data,
-            celltypes_arr.data());
+            celltypes_arr.data(),
+            vtk_97_wedges);
 
         NDArray<int, 1> cells_arr = WrapNDarray<int, 1>(cell_data, {loc});
         return nb::make_tuple(offset_arr, celltypes_arr, cells_arr);
@@ -1558,7 +1559,8 @@ nb::tuple ConvertToVTK(
     NDArray<int, 1> elem_arr,
     NDArray<int, 1> elem_off_arr,
     NDArray<int, 1> type_ref,
-    NDArray<int, 1> nnum_arr) {
+    NDArray<int, 1> nnum_arr,
+    const bool vtk_97_wedges) {
 
     int n_elem = elem_off_arr.size() - 1;
     int n_nodes = nnum_arr.size();
@@ -1578,14 +1580,22 @@ nb::tuple ConvertToVTK(
         nnum_arr.data(),
         offset_arr.data(),
         cell_data,
-        celltypes_arr.data());
+        celltypes_arr.data(),
+        vtk_97_wedges);
 
     NDArray<int, 1> cells_arr = WrapNDarray<int, 1>(cell_data, {loc});
     return nb::make_tuple(offset_arr, celltypes_arr, cells_arr);
 }
 
 NB_MODULE(_reader, m) {
-    m.def("ans_to_vtk", &ConvertToVTK);
+    m.def(
+        "ans_to_vtk",
+        &ConvertToVTK,
+        "elem"_a,
+        "elem_off"_a,
+        "type_ref"_a,
+        "nnum"_a,
+        "vtk_97_wedges"_a = false);
     nb::class_<Archive>(m, "Archive")
         .def(
             nb::init<const std::string &, bool, bool, bool>(),
@@ -1609,7 +1619,7 @@ NB_MODULE(_reader, m) {
         .def_ro("n_nodes", &Archive::n_nodes)
         .def_ro("nblock_start", &Archive::nblock_start)
         .def_ro("nblock_end", &Archive::nblock_end)
-        .def("to_vtk", &Archive::ToVTK)
+        .def("to_vtk", &Archive::ToVTK, "type_map"_a, "vtk_97_wedges"_a = false)
         .def("read", &Archive::Read)
         .def("read_line", &Archive::ReadLine)
         .def("read_nblock", &Archive::ReadNBlock)

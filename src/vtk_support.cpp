@@ -104,58 +104,22 @@ static inline void add_hex(const int *elem, int nnode) {
     return;
 }
 
-/* ============================================================================
-Store wedge element in vtk arrays.  ANSYS elements are ordered
-differently than vtk elements.  ANSYS orders counter-clockwise and
-VTK orders clockwise
+// Map ANSYS degenerate-hexahedron node slots directly to VTK wedge slots.
+// VTK 9.7 uses the opposite triangular winding to older VTK; quadratic
+// midsides must follow the corresponding edges.
+// https://docs.vtk.org/en/latest/release_details/9.7/fix-wedge-point-ordering.html
+static constexpr int LEGACY_WEDGE_NODES[15] = {
+    2, 1, 0, 6, 5, 4, 9, 8, 11, 13, 12, 15, 18, 17, 16};
+static constexpr int VTK_97_WEDGE_NODES[15] = {
+    2, 0, 1, 6, 4, 5, 11, 8, 9, 15, 12, 13, 18, 16, 17};
 
-VTK DOCUMENTATION
-Linear Wedge
-The wedge is defined by the six points (0-5) where (0,1,2) is the
-base of the wedge which, using the right hand rule, forms a
-triangle whose normal points outward (away from the triangular
-face (3,4,5)).
-
-Quadradic Wedge
-The ordering of the fifteen points defining the
-cell is point ids (0-5,6-14) where point ids 0-5 are the six
-corner vertices of the wedge, defined analogously to the six
-points in vtkWedge (points (0,1,2) form the base of the wedge
-which, using the right hand rule, forms a triangle whose normal
-points away from the triangular face (3,4,5)); followed by nine
-midedge nodes (6-14). Note that these midedge nodes correspond lie
-on the edges defined by :
-(0,1), (1,2), (2,0), (3,4), (4,5), (5,3), (0,3), (1,4), (2,5)
-*/
-static inline void add_wedge(const int *elem, int nnode) {
-    bool quad = nnode > 8;
-    if (quad) {
-        add_cell(15, VTK_QUADRATIC_WEDGE);
-    } else {
-        add_cell(6, VTK_WEDGE);
+static inline void add_wedge(const int *elem, int nnode, const int *wedge_nodes) {
+    const bool quad = nnode > 8;
+    const int size = quad ? 15 : 6;
+    add_cell(size, quad ? VTK_QUADRATIC_WEDGE : VTK_WEDGE);
+    for (int i = 0; i < size; ++i) {
+        vtk_data.cells[vtk_data.loc++] = vtk_data.nref[elem[wedge_nodes[i]]];
     }
-
-    // [0, 1, 2, 2, 3, 4, 5, 5]
-    vtk_data.cells[vtk_data.loc++] = vtk_data.nref[elem[2]];
-    vtk_data.cells[vtk_data.loc++] = vtk_data.nref[elem[1]];
-    vtk_data.cells[vtk_data.loc++] = vtk_data.nref[elem[0]];
-    vtk_data.cells[vtk_data.loc++] = vtk_data.nref[elem[6]];
-    vtk_data.cells[vtk_data.loc++] = vtk_data.nref[elem[5]];
-    vtk_data.cells[vtk_data.loc++] = vtk_data.nref[elem[4]];
-
-    if (quad) { // todo: check if index > nnode - 1
-        vtk_data.cells[vtk_data.loc++] = vtk_data.nref[elem[9]];
-        vtk_data.cells[vtk_data.loc++] = vtk_data.nref[elem[8]];
-        vtk_data.cells[vtk_data.loc++] = vtk_data.nref[elem[11]];
-        vtk_data.cells[vtk_data.loc++] = vtk_data.nref[elem[13]];
-        vtk_data.cells[vtk_data.loc++] = vtk_data.nref[elem[12]];
-        vtk_data.cells[vtk_data.loc++] = vtk_data.nref[elem[15]];
-        vtk_data.cells[vtk_data.loc++] = vtk_data.nref[elem[18]];
-        vtk_data.cells[vtk_data.loc++] = vtk_data.nref[elem[17]];
-        vtk_data.cells[vtk_data.loc++] = vtk_data.nref[elem[16]];
-    }
-
-    return;
 }
 
 static inline void add_pyr(const int *elem, int nnode) {
@@ -363,30 +327,6 @@ static inline void add_point(const int *elem) {
     return;
 }
 
-/*
-Stores wedge element in vtk arrays.  ANSYS elements are ordered
-differently than vtk elements.  ANSYS orders counter-clockwise and
-VTK orders clockwise
-
-VTK DOCUMENTATION
-Linear Wedge
-The wedge is defined by the six points (0-5) where (0,1,2) is the
-base of the wedge which, using the right hand rule, forms a
-triangle whose normal points outward (away from the triangular
-face (3,4,5)).
-
-Quadradic Wedge
-The ordering of the fifteen points defining the
-cell is point ids (0-5,6-14) where point ids 0-5 are the six
-corner vertices of the wedge, defined analogously to the six
-points in vtkWedge (points (0,1,2) form the base of the wedge
-which, using the right hand rule, forms a triangle whose normal
-points away from the triangular face (3,4,5)); followed by nine
-midedge nodes (6-14). Note that these midedge nodes correspond lie
-on the edges defined by :
-(0,1), (1,2), (2,0), (3,4), (4,5), (5,3), (0,3), (1,4), (2,5)
-*/
-
 /* ============================================================================
  * function: ans_to_vtk
  * Convert raw ANSYS elements to a VTK UnstructuredGrid format.
@@ -444,7 +384,9 @@ int ans_to_vtk(
     const int *nnum,
     int *offset,
     int *cells,
-    uint8_t *celltypes) {
+    uint8_t *celltypes,
+    const bool vtk_97_wedges) {
+    const int *wedge_nodes = vtk_97_wedges ? VTK_97_WEDGE_NODES : LEGACY_WEDGE_NODES;
     bool is_quad;
     int i;          // counter
     int nnode_elem; // number of nodes belonging to the element
@@ -546,7 +488,7 @@ int ans_to_vtk(
                 add_hex(&elem[off], nnode_elem);
             } else if (elem[off + 5] != elem[off + 6]) { // wedge
                 /* printf(" subtype wedge\n"); */
-                add_wedge(&elem[off], nnode_elem);
+                add_wedge(&elem[off], nnode_elem, wedge_nodes);
             } else if (elem[off + 2] != elem[off + 3]) { // pyramid
                 /* printf(" subtype pyramid\n"); */
                 add_pyr(&elem[off], nnode_elem);

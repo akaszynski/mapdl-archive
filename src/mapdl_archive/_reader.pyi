@@ -37,7 +37,7 @@ class Archive:
     def read_cmblock(self) -> None: ...
     def read(self) -> None: ...
     def to_vtk(
-        self, type_map: NDArray[np.int32]
+        self, type_map: NDArray[np.int32], vtk_97_wedges: bool = False
     ) -> Tuple[NDArray[int], NDArray[np.uint8], NDArray[int]]: ...
 
 def ans_to_vtk(
@@ -45,4 +45,5 @@ def ans_to_vtk(
     elem_off: NDArray[np.int32],
     type_ref: NDArray[np.int32],
     nnum: NDArray[np.int32],
+    vtk_97_wedges: bool = False,
 ) -> Tuple[NDArray[np.int32], NDArray[np.uint8], NDArray[np.int32]]: ...

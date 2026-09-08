@@ -28,6 +28,7 @@ def write_eblock(
     typenum: NDArray[np.int32],
     nodenum: NDArray[np.int32],
     mode: str,
+    vtk_97_wedges: bool = False,
 ) -> None: ...
 def cmblock_items_from_array(array: NDArray[np.int32]) -> NDArray[np.int32]: ...
 def reset_midside(
