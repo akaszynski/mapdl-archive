@@ -577,6 +577,7 @@ def save_as_archive(
     try:
         from pyvista import CellType
         from pyvista.core.pointset import UnstructuredGrid
+        from vtkmodules.util.numpy_support import vtk_to_numpy
     except ImportError as exc:  # pragma: no cover - depends on the install
         from mapdl_archive.mesh import PYVISTA_REQUIRED
 
@@ -855,7 +856,7 @@ def save_as_archive(
         rcon,
         elem_nnodes,
         grid.cell_connectivity,
-        grid.offset,
+        vtk_to_numpy(grid.GetCells().GetOffsetsArray()),
         grid.celltypes,
         typenum,
         nodenum,

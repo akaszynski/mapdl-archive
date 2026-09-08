@@ -14,6 +14,8 @@ import pytest
 pytest.importorskip("pyvista")  # optional dependency
 
 import pyvista as pv
+from vtkmodules.util.numpy_support import vtk_to_numpy
+
 from pyvista import CellType
 from pyvista import examples as pyvista_examples
 from pyvista.plotting import system_supports_plotting  # type: ignore
@@ -116,7 +118,7 @@ def test_parse_vtk(hex_archive: Archive) -> None:
     assert grid.points.size
     assert grid.cell_connectivity.size
     assert grid.cell_connectivity.dtype == np.int32
-    assert grid.offset.dtype == np.int32
+    assert vtk_to_numpy(grid.GetCells().GetOffsetsArray()).dtype == np.int32
     assert "ansys_node_num" in grid.point_data
 
     with pytest.raises(TypeError):
@@ -487,7 +489,10 @@ def test_write_eblock(hex_archive: Archive, tmp_path: Path) -> None:
     elem_nnodes[typenum == 187] = 10
     nodenum = hex_archive.nnum
 
-    cells, offset = hex_archive.grid.cell_connectivity, hex_archive.grid.offset
+    cells, offset = (
+        hex_archive.grid.cell_connectivity,
+        vtk_to_numpy(hex_archive.grid.GetCells().GetOffsetsArray()),
+    )
     _archive.write_eblock(
         filename,
         hex_archive.enum.size,
