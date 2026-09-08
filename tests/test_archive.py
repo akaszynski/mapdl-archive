@@ -14,7 +14,7 @@ import pytest
 pytest.importorskip("pyvista")  # optional dependency
 
 import pyvista as pv
-from vtkmodules.util.numpy_support import vtk_to_numpy
+from pyvista._vtk import vtk_to_numpy
 
 from pyvista import CellType
 from pyvista import examples as pyvista_examples
