@@ -88,7 +88,6 @@ TARGE170_MAP = {
 }
 
 T = TypeVar("T", np.float32, np.float64)
-U = TypeVar("U", np.int32, np.int64)
 
 
 def _uniform_cell_width(offset: NDArray[np.int32]) -> Optional[int]:
@@ -158,25 +157,6 @@ def unique_rows(a: NDArray[T]) -> Tuple[NDArray[T], NDArray[int], NDArray[int]]:
     _, idx, idx2 = np.unique(b, True, True)
 
     return a[idx], idx, idx2.ravel()
-
-
-def _vtk_wedge_order(
-    cells: NDArray[U], offset: NDArray[Any], celltypes: NDArray[np.uint8]
-) -> NDArray[U]:
-    """Translate between the native legacy mapping and VTK 9.7 connectivity."""
-    from pyvista import vtk_version_info
-
-    if vtk_version_info < (9, 7) or not np.isin(celltypes, [13, 26]).any():
-        return cells
-    cells = cells.copy()
-    for celltype, order in (
-        (13, [0, 2, 1, 3, 5, 4]),
-        (26, [0, 2, 1, 3, 5, 4, 8, 7, 6, 11, 10, 9, 12, 14, 13]),
-    ):
-        ids = np.flatnonzero(celltypes == celltype)
-        positions = offset[ids, None] + np.arange(len(order))
-        cells[positions] = cells[positions[:, order]]
-    return cells
 
 
 class Mesh:
@@ -279,6 +259,7 @@ class Mesh:
 
         """
         try:
+            from pyvista import vtk_version_info
             from pyvista._vtk import numpy_to_vtk, vtkCellArray, vtkTypeInt32Array
             from pyvista.core.pointset import UnstructuredGrid
         except ImportError as exc:  # pragma: no cover - depends on the install
@@ -343,6 +324,7 @@ class Mesh:
             self._elem_off,
             type_ref,
             self.nnum,
+            vtk_97_wedges=vtk_version_info >= (9, 7),
         )  # for reset_midside
 
         nodes, angles, nnum = self.nodes, self.node_angles, self.nnum
@@ -359,7 +341,6 @@ class Mesh:
         if additional_checking:
             cells[cells < 0] = 0
 
-        cells = _vtk_wedge_order(cells, offset, celltypes)
         grid = UnstructuredGrid()
         grid.points = nodes
 

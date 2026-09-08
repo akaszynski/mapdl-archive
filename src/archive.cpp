@@ -139,7 +139,8 @@ void WriteEblock(
     const NDArray<const int, 1> cells_arr,         // VTK cell connectivity array
     const NDArray<const int, 1> typenum_arr, // ANSYS type number (e.g. 187 for SOLID187)
     const NDArray<const int, 1> nodenum_arr, // ANSYS node numbering
-    std::string &mode) {
+    std::string &mode,
+    const bool vtk_97_wedges) {
 
     FILE *file = fopen(filename.c_str(), mode.c_str());
 
@@ -157,6 +158,13 @@ void WriteEblock(
     // Write header
     fprintf(file, "EBLOCK,19,SOLID,%10d,%10d\n", elem_id[n_elem - 1], n_elem);
     fprintf(file, "(19i8)\n");
+
+    // Select the VTK slot mapping once, then write wedge nodes directly.
+    static constexpr int legacy_order[15] = {
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14};
+    static constexpr int vtk_97_order[15] = {
+        0, 2, 1, 3, 5, 4, 8, 7, 6, 11, 10, 9, 12, 14, 13};
+    const int *wedge_order = vtk_97_wedges ? vtk_97_order : legacy_order;
 
     int c; // position within offset array
     for (int i = 0; i < n_elem; i++) {
@@ -239,39 +247,39 @@ void WriteEblock(
             fprintf(
                 file,
                 "%8d%8d%8d%8d%8d%8d%8d%8d\n",
-                nodenum[cells[c + 2]],  // 0,  I
-                nodenum[cells[c + 1]],  // 1,  J
-                nodenum[cells[c + 0]],  // 2,  K
-                nodenum[cells[c + 0]],  // 3,  L (duplicate of K)
-                nodenum[cells[c + 5]],  // 4,  M
-                nodenum[cells[c + 4]],  // 5,  N
-                nodenum[cells[c + 3]],  // 6,  O
-                nodenum[cells[c + 3]]); // 7,  P (duplicate of O)
+                nodenum[cells[c + wedge_order[2]]],  // 0,  I
+                nodenum[cells[c + wedge_order[1]]],  // 1,  J
+                nodenum[cells[c + wedge_order[0]]],  // 2,  K
+                nodenum[cells[c + wedge_order[0]]],  // 3,  L (duplicate of K)
+                nodenum[cells[c + wedge_order[5]]],  // 4,  M
+                nodenum[cells[c + wedge_order[4]]],  // 5,  N
+                nodenum[cells[c + wedge_order[3]]],  // 6,  O
+                nodenum[cells[c + wedge_order[3]]]); // 7,  P (duplicate of O)
             break;
         case VTK_QUADRATIC_WEDGE:
             fprintf(
                 file,
                 "%8d%8d%8d%8d%8d%8d%8d%8d\n%8d%8d%8d%8d%8d%8d%8d%8d%8d%8d%8d%8d\n",
-                nodenum[cells[c + 2]],   // 0,  I
-                nodenum[cells[c + 1]],   // 1,  J
-                nodenum[cells[c + 0]],   // 2,  K
-                nodenum[cells[c + 0]],   // 3,  L (duplicate of K)
-                nodenum[cells[c + 5]],   // 4,  M
-                nodenum[cells[c + 4]],   // 5,  N
-                nodenum[cells[c + 3]],   // 6,  O
-                nodenum[cells[c + 3]],   // 7,  P (duplicate of O)
-                nodenum[cells[c + 7]],   // 8,  Q
-                nodenum[cells[c + 6]],   // 9,  R
-                nodenum[cells[c + 0]],   // 10, S   (duplicate of K)
-                nodenum[cells[c + 8]],   // 11, T
-                nodenum[cells[c + 10]],  // 12, U
-                nodenum[cells[c + 9]],   // 13, V
-                nodenum[cells[c + 3]],   // 14, W (duplicate of O)
-                nodenum[cells[c + 11]],  // 15, X
-                nodenum[cells[c + 14]],  // 16, Y
-                nodenum[cells[c + 13]],  // 17, Z
-                nodenum[cells[c + 12]],  // 18, A
-                nodenum[cells[c + 12]]); // 19, B (duplicate of A)
+                nodenum[cells[c + wedge_order[2]]],   // 0,  I
+                nodenum[cells[c + wedge_order[1]]],   // 1,  J
+                nodenum[cells[c + wedge_order[0]]],   // 2,  K
+                nodenum[cells[c + wedge_order[0]]],   // 3,  L (duplicate of K)
+                nodenum[cells[c + wedge_order[5]]],   // 4,  M
+                nodenum[cells[c + wedge_order[4]]],   // 5,  N
+                nodenum[cells[c + wedge_order[3]]],   // 6,  O
+                nodenum[cells[c + wedge_order[3]]],   // 7,  P (duplicate of O)
+                nodenum[cells[c + wedge_order[7]]],   // 8,  Q
+                nodenum[cells[c + wedge_order[6]]],   // 9,  R
+                nodenum[cells[c + wedge_order[0]]],   // 10, S   (duplicate of K)
+                nodenum[cells[c + wedge_order[8]]],   // 11, T
+                nodenum[cells[c + wedge_order[10]]],  // 12, U
+                nodenum[cells[c + wedge_order[9]]],   // 13, V
+                nodenum[cells[c + wedge_order[3]]],   // 14, W (duplicate of O)
+                nodenum[cells[c + wedge_order[11]]],  // 15, X
+                nodenum[cells[c + wedge_order[14]]],  // 16, Y
+                nodenum[cells[c + wedge_order[13]]],  // 17, Z
+                nodenum[cells[c + wedge_order[12]]],  // 18, A
+                nodenum[cells[c + wedge_order[12]]]); // 19, B (duplicate of A)
             break;
         case VTK_QUADRATIC_PYRAMID:
             fprintf(
@@ -731,7 +739,23 @@ void OverwriteNblock(
 NB_MODULE(_archive, m) {
     m.def("write_nblock", &WriteNblock<float>);
     m.def("write_nblock", &WriteNblock<double>);
-    m.def("write_eblock", &WriteEblock);
+    m.def(
+        "write_eblock",
+        &WriteEblock,
+        nb::arg("filename"),
+        nb::arg("n_elem"),
+        nb::arg("elem_id"),
+        nb::arg("etype"),
+        nb::arg("mtype"),
+        nb::arg("rcon"),
+        nb::arg("elem_nnodes"),
+        nb::arg("celltypes"),
+        nb::arg("offset"),
+        nb::arg("cells"),
+        nb::arg("typenum"),
+        nb::arg("nodenum"),
+        nb::arg("mode"),
+        nb::arg("vtk_97_wedges") = false);
     m.def("overwrite_nblock", &OverwriteNblock);
     m.def("cmblock_items_from_array", &CmblockItems);
     m.def("reset_midside", &ResetMidside<float>);

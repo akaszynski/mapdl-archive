@@ -12,6 +12,7 @@ int ans_to_vtk(
     const int *,
     int *,
     int *,
-    uint8_t *);
+    uint8_t *,
+    const bool vtk_97_wedges);
 
 #endif
