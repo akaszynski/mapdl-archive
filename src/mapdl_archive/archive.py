@@ -576,8 +576,8 @@ def save_as_archive(
     # imported here so reading an archive needs neither PyVista nor VTK
     try:
         from pyvista import CellType
+        from pyvista._vtk import vtk_to_numpy
         from pyvista.core.pointset import UnstructuredGrid
-        from vtkmodules.util.numpy_support import vtk_to_numpy
     except ImportError as exc:  # pragma: no cover - depends on the install
         from mapdl_archive.mesh import PYVISTA_REQUIRED
 
