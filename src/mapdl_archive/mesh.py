@@ -2,7 +2,7 @@
 
 import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, TypeVar, Union, cast
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 import numpy as np
 from numpy.typing import NDArray
@@ -14,7 +14,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from pyvista.core.pointset import PolyData, UnstructuredGrid
 
 VTK_UNSIGNED_CHAR = 3
-COMP_DICT = Dict[str, NDArray[np.int32]]
+COMP_DICT = dict[str, NDArray[np.int32]]
 
 PYVISTA_REQUIRED = (
     "Parsing an archive to a grid requires PyVista, which is an optional "
@@ -28,7 +28,7 @@ INVALID_ALLOWABLE_TYPES = TypeError(
 )
 
 # map MESH200 elements to a mapdl_archive/VTK element type (see elements.py)
-MESH200_MAP: Dict[int, int] = {
+MESH200_MAP: dict[int, int] = {
     0: 2,  # line
     1: 2,  # line
     2: 2,  # line
@@ -43,7 +43,7 @@ MESH200_MAP: Dict[int, int] = {
     11: 4,
 }  # hex with 8 nodes
 
-SHAPE_MAP: Dict[int, str] = {  # from ELIST definition
+SHAPE_MAP: dict[int, str] = {  # from ELIST definition
     0: "",
     1: "LINE",
     2: "PARA",
@@ -90,7 +90,7 @@ TARGE170_MAP = {
 T = TypeVar("T", np.float32, np.float64)
 
 
-def _uniform_cell_width(offset: NDArray[np.int32]) -> Optional[int]:
+def _uniform_cell_width(offset: NDArray[np.int32]) -> int | None:
     """
     Return the points per cell when every cell is the same width.
 
@@ -148,7 +148,7 @@ def _set_fixed_width(cell_array: Any, width: int, cells_vtk: Any) -> bool:
         return False
 
 
-def unique_rows(a: NDArray[T]) -> Tuple[NDArray[T], NDArray[int], NDArray[int]]:
+def unique_rows(a: NDArray[T]) -> tuple[NDArray[T], NDArray[int], NDArray[int]]:
     """Return unique rows of an array and the indices of those rows."""
     if not a.flags.c_contiguous:
         a = np.ascontiguousarray(a)
@@ -173,21 +173,21 @@ class Mesh:
         rnum: NDArray[np.int32],
         node_comps: COMP_DICT = {},
         elem_comps: COMP_DICT = {},
-        rdat: List[List[float]] = [],
-        keyopt: Dict[int, List[List[int]]] = {},
+        rdat: list[list[float]] = [],
+        keyopt: dict[int, list[list[int]]] = {},
     ):
         """Initialize the mesh."""
-        self._etype: Optional[NDArray[np.int32]] = None  # internal element type reference
-        self._grid: Optional["UnstructuredGrid"] = None
-        self._surf_cache: Optional["PolyData"] = None  # cached external surface
-        self._enum: Optional[NDArray[np.int32]] = None  # cached element numbering
-        self._etype_cache: Optional[NDArray[np.int32]] = None  # cached ansys ETYPE num
-        self._rcon: Optional[NDArray[np.int32]] = None  # ansys element real constant
-        self._mtype: Optional[NDArray[np.int32]] = None  # cached ansys material type
-        self._cached_elements: Optional[List[NDArray[np.int32]]] = None
-        self._secnum: Optional[NDArray[np.int32]] = None  # cached section number
-        self._esys: Optional[NDArray[np.int32]] = None  # cached element coordinate system
-        self._etype_id: Optional[NDArray[np.int32]] = None  # cached element type id
+        self._etype: NDArray[np.int32] | None = None  # internal element type reference
+        self._grid: UnstructuredGrid | None = None
+        self._surf_cache: PolyData | None = None  # cached external surface
+        self._enum: NDArray[np.int32] | None = None  # cached element numbering
+        self._etype_cache: NDArray[np.int32] | None = None  # cached ansys ETYPE num
+        self._rcon: NDArray[np.int32] | None = None  # ansys element real constant
+        self._mtype: NDArray[np.int32] | None = None  # cached ansys material type
+        self._cached_elements: list[NDArray[np.int32]] | None = None
+        self._secnum: NDArray[np.int32] | None = None  # cached section number
+        self._esys: NDArray[np.int32] | None = None  # cached element coordinate system
+        self._etype_id: NDArray[np.int32] | None = None  # cached element type id
 
         # Always set on init
         self._nnum = nnum
@@ -200,11 +200,11 @@ class Mesh:
         # optional
         self._node_comps: COMP_DICT = node_comps
         self._elem_comps: COMP_DICT = elem_comps
-        self._rdat: List[List[float]] = rdat
+        self._rdat: list[list[float]] = rdat
         self._rnum: NDArray[np.int32] = rnum
-        self._keyopt: Dict[int, List[List[int]]] = keyopt
-        self._tshape: Optional[NDArray[np.int32]] = None
-        self._tshape_key: Optional[NDArray[np.int32]] = None
+        self._keyopt: dict[int, list[list[int]]] = keyopt
+        self._tshape: NDArray[np.int32] | None = None
+        self._tshape_key: NDArray[np.int32] | None = None
 
     @property
     def _surf(self) -> "PolyData":
@@ -235,7 +235,7 @@ class Mesh:
 
     def _parse_vtk(
         self,
-        allowable_types: Optional[List[int]] = None,
+        allowable_types: list[int] | None = None,
         force_linear: bool = False,
         null_unallowed: bool = False,
         fix_midside: bool = True,
@@ -397,7 +397,7 @@ class Mesh:
         return grid
 
     @property
-    def key_option(self) -> Dict[int, List[List[int]]]:
+    def key_option(self) -> dict[int, list[list[int]]]:
         """Return additional key options for element types.
 
         Examples
@@ -581,7 +581,7 @@ class Mesh:
         return self._esys
 
     @property
-    def elem(self) -> List[NDArray[np.int32]]:
+    def elem(self) -> list[NDArray[np.int32]]:
         """Return the list of elements containing raw element information.
 
         Each element contains 10 items plus the nodes belonging to the
@@ -671,7 +671,7 @@ class Mesh:
         return self._ekey
 
     @property
-    def rlblock(self) -> List[List[float]]:
+    def rlblock(self) -> list[list[float]]:
         """Return the real constant data from the RLBLOCK.
 
         Examples
@@ -722,7 +722,7 @@ class Mesh:
         return self._nodes
 
     @property
-    def node_angles(self) -> Optional[NDArray[np.float64]]:
+    def node_angles(self) -> NDArray[np.float64] | None:
         """Return the node angles from the archive file.
 
         Examples
@@ -757,10 +757,10 @@ class Mesh:
 
     def save(
         self,
-        filename: Union[str, Path],
+        filename: str | Path,
         binary: bool = True,
         force_linear: bool = False,
-        allowable_types: Optional[Union[List[int]]] = None,
+        allowable_types: list[int] | None = None,
         null_unallowed: bool = False,
     ) -> None:
         """Save the geometry as a vtk file.
@@ -802,7 +802,6 @@ class Mesh:
             null_unallowed=null_unallowed,
         )
         grid.save(str(filename), binary=binary)
-        return None
 
     @property
     def n_node(self) -> int:
@@ -837,7 +836,7 @@ class Mesh:
     @property
     def tshape_key(
         self, as_array: bool = False
-    ) -> Union[NDArray[np.int32], Dict[int, NDArray[np.int32]]]:
+    ) -> NDArray[np.int32] | dict[int, NDArray[np.int32]]:
         """Return a dictionary with the mapping between element type and element shape.
 
         TShape is only applicable to contact elements.
@@ -855,9 +854,9 @@ def fix_missing_midside(
     nodes: NDArray[np.double],
     celltypes: NDArray[np.uint8],
     offset: NDArray[np.int32],
-    angles: Optional[NDArray[np.float64]],
+    angles: NDArray[np.float64] | None,
     nnum: NDArray[np.int32],
-) -> Tuple[NDArray[np.float64], Optional[NDArray[np.float64]], NDArray[np.int32]]:
+) -> tuple[NDArray[np.float64], NDArray[np.float64] | None, NDArray[np.int32]]:
     """Add missing midside nodes to cells.
 
     ANSYS sometimes does not add midside nodes, and this is denoted in

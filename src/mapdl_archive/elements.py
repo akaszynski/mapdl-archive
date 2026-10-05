@@ -224,8 +224,6 @@ PLANE293
 USER300
 """
 
-from typing import List
-
 import numpy as np
 import numpy.typing as npt
 
@@ -238,7 +236,7 @@ import numpy.typing as npt
 # 5: Tetrahedral
 # 6: Line (always linear)
 
-_etype_map: List[int] = [
+_etype_map: list[int] = [
     0,
     2,  # LINK1
     3,  # PLANE2

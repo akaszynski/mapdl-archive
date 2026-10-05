@@ -6,7 +6,8 @@ import os
 import pathlib
 import re
 import shutil
-from typing import TYPE_CHECKING, Any, Sequence, TypeVar
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Any, TypeVar
 
 import numpy as np
 from numpy.typing import NDArray
@@ -647,8 +648,7 @@ def save_as_archive(
             nodenum[missing_mask] = 0
         else:
             start_num = nodenum.max() + 1
-            if nnum_start > start_num:
-                start_num = nnum_start
+            start_num = max(start_num, nnum_start)
             nadd = np.sum(nodenum == -1)
             end_num = start_num + nadd
             LOG.info(
@@ -678,8 +678,7 @@ def save_as_archive(
             )
 
         start_num = enum.max() + 1
-        if enum_start > start_num:
-            start_num = enum_start
+        start_num = max(start_num, enum_start)
         nadd = np.sum(enum == -1)
         end_num = start_num + nadd
         LOG.info(
@@ -960,8 +959,6 @@ def write_nblock(
         sig_digits,
         mode,
     )
-
-    return None
 
 
 def write_cmblock(

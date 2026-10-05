@@ -21,4 +21,4 @@ except ImportError:  # pragma: no cover
         __version__ = "unknown"
 
 
-__all__ = ["Archive", "save_as_archive", "write_cmblock", "write_nblock", "examples", "__version__"]
+__all__ = ["Archive", "__version__", "examples", "save_as_archive", "write_cmblock", "write_nblock"]
