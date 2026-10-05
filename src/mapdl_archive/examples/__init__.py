@@ -8,8 +8,8 @@ from .examples import (
 )
 
 __all__ = [
-    "hexarchivefile",
-    "tetarchivefile",
-    "sector_archive_file",
     "academic_rotor_archive_file",
+    "hexarchivefile",
+    "sector_archive_file",
+    "tetarchivefile",
 ]

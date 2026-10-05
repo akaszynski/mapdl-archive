@@ -1,5 +1,3 @@
-from typing import Dict, List, Tuple
-
 import numpy as np
 from numpy.typing import NDArray
 
@@ -7,14 +5,14 @@ class Archive:
     elem: NDArray[np.int32]
     elem_off: NDArray[np.int32]
     n_elem: int
-    keyopt: Dict[int, List[List[int]]]
-    rdat: List[List[float]]
-    rnum: List[int]
-    elem_type: List[List[int]]
+    keyopt: dict[int, list[list[int]]]
+    rdat: list[list[float]]
+    rnum: list[int]
+    elem_type: list[list[int]]
 
     # Components
-    elem_comps: Dict[str, NDArray[np.int32]]
-    node_comps: Dict[str, NDArray[np.int32]]
+    elem_comps: dict[str, NDArray[np.int32]]
+    node_comps: dict[str, NDArray[np.int32]]
 
     # node block
     n_nodes: int
@@ -38,7 +36,7 @@ class Archive:
     def read(self) -> None: ...
     def to_vtk(
         self, type_map: NDArray[np.int32], vtk_97_wedges: bool = False
-    ) -> Tuple[NDArray[int], NDArray[np.uint8], NDArray[int]]: ...
+    ) -> tuple[NDArray[int], NDArray[np.uint8], NDArray[int]]: ...
 
 def ans_to_vtk(
     elem: NDArray[np.int32],
@@ -46,4 +44,4 @@ def ans_to_vtk(
     type_ref: NDArray[np.int32],
     nnum: NDArray[np.int32],
     vtk_97_wedges: bool = False,
-) -> Tuple[NDArray[np.int32], NDArray[np.uint8], NDArray[np.int32]]: ...
+) -> tuple[NDArray[np.int32], NDArray[np.uint8], NDArray[np.int32]]: ...
