@@ -1,7 +1,9 @@
 #include <algorithm>
 #include <climits>
+#include <cmath>
 #include <iostream>
 #include <math.h>
+#include <memory>
 #include <sstream>
 #include <stdexcept>
 #include <stdint.h>
@@ -40,22 +42,6 @@ using namespace nb::literals;
 #endif
 
 // #define DEBUG
-
-static const double DIV_OF_TEN[] = {
-    1.0e-0,  1.0e-1,  1.0e-2,  1.0e-3,  1.0e-4,  1.0e-5,  1.0e-6,  1.0e-7,  1.0e-8,  1.0e-9,
-    1.0e-10, 1.0e-11, 1.0e-12, 1.0e-13, 1.0e-14, 1.0e-15, 1.0e-16, 1.0e-17, 1.0e-18, 1.0e-19,
-    1.0e-20, 1.0e-21, 1.0e-22, 1.0e-23, 1.0e-24, 1.0e-25, 1.0e-26, 1.0e-27,
-};
-
-static inline double power_of_ten(int exponent) {
-    double result = 1.0;
-    double base = (exponent < 0) ? 0.1 : 10.0;
-    int abs_exponent = abs(exponent);
-    for (int i = 0; i < abs_exponent; ++i) {
-        result *= base;
-    }
-    return result;
-}
 
 //=============================================================================
 // Fast string to integer convert to ANSYS formatted integers
@@ -200,100 +186,58 @@ static inline int ClassifyNBlockLine(const char *pos, const char *file_end, int 
 // The number of digits before the decimal point is not fixed: scientific
 // notation always writes exactly one, but plain "F" style output (for example
 // the "(3i8,6e16.9)" that some pre-processors emit) writes as many as the value
-// needs. Every loop below advances ``raw`` unconditionally so that an
-// unexpected character ends the field rather than spinning forever.
+// needs. Conversion is bounded to this field and validates the complete token;
+// malformed/trailing text is reported instead of becoming a prefix coordinate.
 //
 // fltsz : Number of characters to read in a floating point number
 static inline int ans_strtod(char *raw, int fltsz, double *arr) {
-    char *end = raw + fltsz;
-    double sign = 1;
-
-    while (raw < end) {
-        if (*raw == '\0') {
-            // section empty, value is zero
-            *arr = 0;
-            return 1;
-        } else if (*raw != ' ') { // always skip whitespace
-            break;
-        }
-        raw++;
+    if (fltsz < 0) {
+        throw std::invalid_argument("Invalid NBLOCK floating-point field width.");
     }
-
-    // A field containing nothing but whitespace is zero, not garbage.
-    if (raw >= end) {
-        *arr = 0;
+    const char *end = raw + fltsz;
+    auto space = [](char c) {
+        return c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\v' || c == '\f';
+    };
+    while (raw < end && space(*raw)) {
+        ++raw;
+    }
+    if (raw < end && *raw == '\0') {
+        // Preserve the empty end-of-line signal used for optional node angles.
+        *arr = 0.0;
+        return 1;
+    }
+    while (end > raw && space(end[-1])) {
+        --end;
+    }
+    if (raw == end) {
+        *arr = 0.0;
         return 0;
     }
 
-    // either a number or a sign
-    if (*raw == '-') {
-        sign = -1;
-        ++raw;
-    } else if (*raw == '+') {
-        ++raw;
-    }
-
-    // Integer part. Use integer arithmetic and then convert to a float.
-    uint64_t val_int = 0;
-    while (raw < end && *raw >= '0' && *raw <= '9') {
-        val_int = val_int * 10 + (uint64_t)(*raw - '0');
-        raw++;
-    }
-
-    // Fractional part, accumulated into the same integer and scaled below.
-    int decimal_digits = 0;
-    if (raw < end && *raw == '.') {
-        raw++;
-        while (raw < end && *raw >= '0' && *raw <= '9') {
-            val_int = val_int * 10 + (uint64_t)(*raw - '0');
-            decimal_digits++;
-            raw++;
+    // Copy ONLY this fixed-width field. The native converter requires a NUL
+    // terminator and must never consume a digit from the following field.
+    std::string token(raw, static_cast<size_t>(end - raw));
+    for (char &c : token) {
+        if (c == 'D' || c == 'd') {
+            c = 'e';
         }
     }
 
-    // Compute the floating-point value
-    double val;
-    if (decimal_digits < 27) {
-        val = (double)val_int * DIV_OF_TEN[decimal_digits];
-    } else {
-        val = (double)val_int * power_of_ten(10);
+    // The binding holds the GIL. Use CPython's existing locale-independent,
+    // Stable-ABI decimal converter rather than rounding an integer significand
+    // and powers of ten separately. PyOS_string_to_double also preserves -0.
+    char *parsed_end = nullptr;
+    const double value =
+        PyOS_string_to_double(token.c_str(), &parsed_end, PyExc_OverflowError);
+    if (PyErr_Occurred()) {
+        throw nb::python_error();
     }
-
-    // Might have scientific notation remaining, for example:
-    // 1.0000000000000E-001
-    int evalue = 0;
-    int esign = 1;
-    if (raw < end && (*raw == 'e' || *raw == 'E')) { // incredibly, can be lowercase
-        raw++;                                       // skip "E"
-        // usually a sign of some sort, but it is not guaranteed
-        if (raw < end && (*raw == '-' || *raw == '+')) {
-            if (*raw == '-') {
-                esign = -1;
-            }
-            raw++;
-        }
-
-        // Only digits belong to the exponent. Guarding on them keeps a trailing
-        // "\r" or a short field from being folded in as if it were one.
-        while (raw < end && *raw >= '0' && *raw <= '9') {
-            evalue = evalue * 10 + (*raw - '0');
-            raw++;
-        }
-        if (esign == 1) {
-            val *= power_of_ten(evalue);
-        } else {
-            val /= power_of_ten(evalue);
-        }
+    if (parsed_end != token.data() + token.size() || !std::isfinite(value)) {
+        throw std::invalid_argument("Invalid NBLOCK floating-point field.");
     }
-
-    // seek through end of float value
-    if (sign == -1) {
-        *arr = -val;
-    } else {
-        *arr = val;
-    }
-
-    // check if at end of line
+    // Commit only after complete conversion; invalid/trailing fields must not
+    // become plausible zero/prefix coordinates.
+    *arr = value;
     return 0;
 }
 
@@ -1278,26 +1222,28 @@ class Archive {
             std::cout << "Reading " << n_nodes << " nodes" << std::endl;
         }
 
-        int *nnum_data = AllocateArray<int>(n_nodes > 0 ? n_nodes : 1);
-        double *nodes_data = AllocateArray<double>(n_nodes > 0 ? n_nodes * 3 : 1);
+        std::unique_ptr<int[]> nnum_data(AllocateArray<int>(n_nodes > 0 ? n_nodes : 1));
+        std::unique_ptr<double[]> nodes_data(
+            AllocateArray<double>(n_nodes > 0 ? n_nodes * 3 : 1));
 
         // often angles aren't written, so it makes sense to initialize this to
         // zero
-        double *node_angles_data = AllocateArray<double>(n_nodes > 0 ? n_nodes * 3 : 1, true);
+        std::unique_ptr<double[]> node_angles_data(
+            AllocateArray<double>(n_nodes > 0 ? n_nodes * 3 : 1, true));
 
         // Return actual number of nodes read and wrap the raw data
         // std::cout << memmap.tellg() << std::endl;
         n_nodes = ReadNBlockMemMap(
             memmap,
-            nnum_data,
-            nodes_data,
-            node_angles_data,
+            nnum_data.get(),
+            nodes_data.get(),
+            node_angles_data.get(),
             n_nodes,
             nfmt.d_size,
             nfmt.f_size);
-        nnum_arr = WrapNDarray<int, 1>(nnum_data, {n_nodes});
-        nodes_arr = WrapNDarray<double, 2>(nodes_data, {n_nodes, 3});
-        node_angles_arr = WrapNDarray<double, 2>(node_angles_data, {n_nodes, 3});
+        nnum_arr = WrapNDarray<int, 1>(nnum_data.release(), {n_nodes});
+        nodes_arr = WrapNDarray<double, 2>(nodes_data.release(), {n_nodes, 3});
+        node_angles_arr = WrapNDarray<double, 2>(node_angles_data.release(), {n_nodes, 3});
         // std::cout << memmap.tellg() << std::endl;
 
         if (debug) {
